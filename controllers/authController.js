@@ -60,7 +60,7 @@ exports.signup = async (req, res) => {
     });
   } catch (err) {
     console.error("Signup error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error..!" });
   }
 };
 
