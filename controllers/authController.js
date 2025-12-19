@@ -92,7 +92,7 @@ exports.login = async (req, res) => {
     );
 
     return res.json({
-      message: "Login successfully",
+      message: "Login successfull",
       token
     });
   } catch (err) {
