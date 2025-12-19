@@ -12,6 +12,7 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/students", require("./routes/studentRoutes"));
 app.use("/api/teachers", require("./routes/teacherRoutes"));
 app.use("/uploads", express.static("uploads"));
+app.use("/api/quizzes", require("./routes/quizRoutes"));
 
 app.get("/", (req,res) => res.send("<h1>Student Management API - Use Postman to test</h1>"));
 
