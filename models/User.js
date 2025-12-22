@@ -37,14 +37,14 @@ const UserSchema = new mongoose.Schema(
     age: {
       type: Number,
       required: function () {
-        return this.role === "student";
+      return this.role === "student";
       },
     },
 
     class: {
       type: String,
       required: function () {
-        return this.role === "student";
+      return this.role === "student";
       },
     },
 
@@ -53,16 +53,11 @@ const UserSchema = new mongoose.Schema(
     country: { type: String, default: "" },
     profileImage: { type: String, default: "" },
 
-
     teacherId: {
-      type: String,   
+      type: mongoose.Schema.Types.ObjectId,   
       default: null
   },
-
-
   },
-
   { timestamps: true }
 );
-
 module.exports = mongoose.model("User", UserSchema);

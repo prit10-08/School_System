@@ -27,7 +27,6 @@ exports.createQuiz = async (req, res) => {
   }
 };
 
-
 exports.getMyQuizzes = async (req, res) => {
   try {
     const quizzes = await Quiz.find({
@@ -39,7 +38,6 @@ exports.getMyQuizzes = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 exports.getQuizById = async (req, res) => {
   try {
@@ -57,7 +55,6 @@ exports.getQuizById = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 exports.updateQuiz = async (req, res) => {
   try {
@@ -92,6 +89,41 @@ exports.updateQuiz = async (req, res) => {
   }
 };
 
+exports.updateQuizQuestion = async (req, res) => {
+  try {
+    const { quizId, questionId } = req.params;
+    const { question, options, correctOption } = req.body;
+
+    const quiz = await Quiz.findOne({
+      _id: quizId,
+      teacherId: req.user.id
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+
+    const ques = quiz.questions.id(questionId);
+
+    if (!ques) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+
+    if (question) ques.question = question;
+    if (options) ques.options = options;
+    if (correctOption !== undefined) ques.correctOption = correctOption;
+
+    await quiz.save();
+
+    res.json({
+      message: "Question updated successfully",
+      question: ques
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 exports.deleteQuiz = async (req, res) => {
   try {

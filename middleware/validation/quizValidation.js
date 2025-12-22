@@ -1,12 +1,10 @@
 const { body, param, validationResult } = require("express-validator");
 
-const createQuizValidation = [
-  
+const createQuizValidation = [  
   body("title")
     .trim()
     .notEmpty()
     .withMessage("Title is required"),
-
   
   body("subject")
     .trim()
@@ -36,7 +34,6 @@ const createQuizValidation = [
     .withMessage("correctOption must be one of a, b, c, d")
 ];
 
-
 const updateQuizValidation = [
   body("title").optional().trim().notEmpty().withMessage("Title cannot be empty"),
   body("subject").optional().trim().notEmpty().withMessage("Subject cannot be empty"),
@@ -47,11 +44,19 @@ const updateQuizValidation = [
   body("questions.*.correctOption").optional().isIn(["a", "b", "c", "d"]).withMessage("correctOption must be one of a, b, c, d")
 ];
 
-
 const quizIdParam = [
   param("id").isMongoId().withMessage("Invalid quiz id")
 ];
 
+const quizQuestionParam = [
+  param("quizId")
+    .isMongoId()
+    .withMessage("Invalid quiz id"),
+
+  param("questionId")
+    .isMongoId()
+    .withMessage("Invalid question id")
+];
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -64,4 +69,4 @@ const validate = (req, res, next) => {
   next();
 };
 
-module.exports = {createQuizValidation,updateQuizValidation,quizIdParam,validate};
+module.exports = {createQuizValidation,updateQuizValidation,quizIdParam,quizQuestionParam,validate};

@@ -40,6 +40,17 @@ const authLogin = [
   body('password').notEmpty().withMessage('password required')
 ];
 
+const submitQuizValidation = [
+  body("answers")
+    .isArray({ min: 1 })
+    .withMessage("Answers are required"),
+
+  body("answers.*")
+    .notEmpty()
+    .withMessage("Each question must be answered")
+    .isIn(["a", "b", "c", "d"])
+    .withMessage("Answer must be one of a, b, c, d")
+];
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -92,4 +103,4 @@ const csvUploadValidation = async (req, res, next) => {
       next();
     });
 };
-module.exports = { studentCreate, studentUpdate, studentIdParam, markCreate, markUpdate, authLogin, validate, csvUploadValidation};
+module.exports = { studentCreate, studentUpdate, studentIdParam, markCreate, markUpdate, authLogin,submitQuizValidation, validate, csvUploadValidation};

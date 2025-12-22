@@ -10,15 +10,15 @@ exports.getMyProfile = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    let teacher = null;
+    // let teacher = null;
 
-    if (student.createdByTeacher) {
-      teacher = await User.findOne(
-        { userId: student.createdByTeacher, role: "teacher" },
-        { name: 1, userId: 1, _id: 0 }
-      );
-    }
-    res.json({ student,createdByTeacher: teacher });
+    // if (student.createdByTeacher) {
+    //   teacher = await User.findOne(
+    //     { userId: student.createdByTeacher, role: "teacher" },
+    //     { name: 1, userId: 1, _id: 0 }
+    //   );
+    // }
+    res.json({ student/*createdByTeacher: teacher*/ });
   } 
   catch (err) 
   {
@@ -88,7 +88,6 @@ exports.updateMyProfile = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 exports.getMyMarks = async (req, res) => {
   try {
