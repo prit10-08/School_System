@@ -86,6 +86,7 @@ exports.submitQuiz = async (req, res) => {
       obtainedMarks: score,
       student_id:req.user.id
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });

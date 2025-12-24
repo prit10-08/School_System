@@ -1,6 +1,12 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 dotenv.config();
 connectDB();
@@ -13,8 +19,8 @@ app.use("/api/students", require("./routes/studentRoutes"));
 app.use("/api/teachers", require("./routes/teacherRoutes"));
 app.use("/uploads", express.static("uploads"));
 app.use("/api/quizzes", require("./routes/quizRoutes"));
-
+app.use("/api/teacher-availability", require("./routes/teacherAvailabilityRoutes"));
+app.use("/api/sessions", require("./routes/sessionRoutes"));
 app.get("/", (req,res) => res.send("<h1>Student Management API - Use Postman to test</h1>"));
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

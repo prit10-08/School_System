@@ -50,7 +50,7 @@ exports.createStudent = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 10);
-
+    
     const student = await User.create({
       role: "student",
       userId,
@@ -77,7 +77,7 @@ exports.createStudent = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
   try {
-    const { name, email, age, class: className, city, state, country } = req.body;
+    const { name, email, age, class: className, city, state, country,timezone } = req.body;
     const userId = req.params.userId;
 
     const update = {};
@@ -87,7 +87,7 @@ exports.updateStudent = async (req, res) => {
     if (city) update.city = city;
     if (state) update.state = state;
     if (country) update.country = country;
-
+    if (timezone) update.timezone = timezone;
     if (email) {
       const emailExists = await User.findOne({
         email: email.toLowerCase().trim(),

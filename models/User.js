@@ -57,6 +57,10 @@ const UserSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,   
       default: null
   },
+  timezone: {
+  type: String,
+  default: "Asia/Kolkata"
+  },
   },
   { timestamps: true }
 );
