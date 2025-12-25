@@ -1,4 +1,4 @@
-const dayjs = require("dayjs");
+const moment = require("moment-timezone");
 const Session = require("../models/Session");
 const TeacherAvailability = require("../models/TeacherAvailability");
 const User = require("../models/User");
@@ -85,8 +85,8 @@ exports.createSession = async (req, res) => {
       teacherId,
       studentId: studentId || null,
       title,
-      startTime: start, 
-      endTime: end      
+      startTime: start,
+      endTime: end
     });
 
     res.status(201).json({
@@ -112,23 +112,40 @@ exports.getStudentSessions = async (req, res) => {
     const timezone = student.timezone || "Asia/Kolkata";
     const teacherId = student.teacherId;
 
-    const sessions = await Session.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = {
       teacherId,
       $or: [
-        { studentId: null },       
-        { studentId: studentId }    
+        { studentId: null },
+        { studentId: studentId }
       ]
-    }).sort({ startTime: 1 });
+    };
+
+    const totalSessions = await Session.countDocuments(query);
+
+    const sessions = await Session.find(query)
+      .sort({ startTime: 1 })
+      .skip(skip)
+      .limit(limit);
 
     const formattedSessions = sessions.map(s => ({
       _id: s._id,
       title: s.title,
       type: s.studentId ? "personal" : "common",
-      startTime: dayjs(s.startTime).tz(timezone).format("DD-MM-YYYY HH:mm"),
-      endTime: dayjs(s.endTime).tz(timezone).format("DD-MM-YYYY HH:mm")
+      startTime: moment(s.startTime).tz(timezone).format("DD-MM-YYYY HH:mm"),
+      endTime: moment(s.endTime).tz(timezone).format("DD-MM-YYYY HH:mm")
     }));
 
     res.json({
+      pagination: {
+        totalSessions,
+        currentPage: page,
+        totalPages: Math.ceil(totalSessions / limit),
+        limit
+      },
       sessions: formattedSessions
     });
 
