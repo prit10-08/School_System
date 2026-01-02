@@ -44,12 +44,14 @@ const SessionSlotSchema = new mongoose.Schema(
 
     sessionDuration: {
       type: Number, 
-      required: true
+      required: true,
+      default: 60 
     },
 
     breakDuration: {
       type: Number, 
-      required: true
+      required: true,
+      default: 10
     },
 
     bookedSlots: [BookedSlotSchema]
