@@ -35,10 +35,6 @@ const markUpdate = [
   body('marks').optional().isNumeric().withMessage('marks must be numeric')
 ];
 
-const authLogin = [
-  body('userId').trim().notEmpty().withMessage('userId required'),
-  body('password').notEmpty().withMessage('password required')
-];
 
 const submitQuizValidation = [
   body("answers")
@@ -80,27 +76,36 @@ const csvUploadValidation = async (req, res, next) => {
   fs.createReadStream(req.file.path)
     .pipe(csv())
     .on("data", (row) => rows.push(row))
+    .on("error", (error) => {
+      console.error("CSV parsing error:", error);
+      return res.status(400).json({ message: "Error parsing CSV file: " + error.message });
+    })
     .on("end", async () => {
-      for (let i = 0; i < rows.length; i++) {
-        const fakeReq = { body: rows[i] };
+      try {
+        for (let i = 0; i < rows.length; i++) {
+          const fakeReq = { body: rows[i] };
 
-        for (const rule of csvStudentValidators) {
-          await rule.run(fakeReq);
+          for (const rule of csvStudentValidators) {
+            await rule.run(fakeReq);
+          }
+
+          const errors = validationResult(fakeReq);
+
+          if (!errors.isEmpty()) {
+            skippedDetails.push({
+              row: i + 2,
+              userId: rows[i].userId || null,
+              reasons: errors.array().map(e => e.msg)
+            });
+          }
         }
-
-        const errors = validationResult(fakeReq);
-
-        if (!errors.isEmpty()) {
-          skippedDetails.push({
-            row: i + 2,
-            userId: rows[i].userId || null,
-            reasons: errors.array().map(e => e.msg)
-          });
-        }
+        req.csvRows = rows;
+        req.csvSkippedDetails = skippedDetails;
+        next();
+      } catch (error) {
+        console.error("CSV validation error:", error);
+        return res.status(400).json({ message: "Error validating CSV: " + error.message });
       }
-      req.csvRows = rows;
-      req.csvSkippedDetails = skippedDetails;
-      next();
     });
 };
-module.exports = { studentCreate, studentUpdate, studentIdParam, markCreate, markUpdate, authLogin,submitQuizValidation, validate, csvUploadValidation};
+module.exports = { studentCreate, studentUpdate, studentIdParam, markCreate, markUpdate, submitQuizValidation, validate, csvUploadValidation};

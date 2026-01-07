@@ -36,9 +36,9 @@ const signupValidation =
 
 const loginValidation = 
 [
-  body("userId")
-    .notEmpty()
-    .withMessage("userId cannot be empty"),
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required"),
 
   body("password")
     .notEmpty()

@@ -3,13 +3,15 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 exports.signup = async (req, res) => {
-  if (!req.file) {
-  return res.status(400).json({
-    message: "Profile image is required"
-  });
-}
+  const { userId, name, email, password, city, state, country, role } = req.body;
 
-  const { role,userId,name,email,password,age,class: className,city,state,country,teacherUserId } = req.body;
+  // Only allow teacher signup
+  if (role !== "teacher") {
+    return res.status(403).json({
+      success: false,
+      message: "Only teacher accounts can be created through public signup"
+    });
+  }
 
   try {
     const exists = await User.findOne({
@@ -18,65 +20,60 @@ exports.signup = async (req, res) => {
 
     if (exists) {
       return res.status(400).json({
+        success: false,
         message: "UserId or Email already in use"
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    let createdByTeacher = null;
-
-  if (role === "student" && teacherUserId) {
-       const teacher = await User.findOne({
-       userId: teacherUserId,
-       role: "teacher"
-    });
-
-    if (!teacher) {
-      return res.status(400).json({ message: "Invalid teacher userId" });
-    }
-
-      createdByTeacher = teacherUserId;
-  }
-
     const user = await User.create({
-      role,
+      role: "teacher",
       userId,
       name,
       email,
       password: hashedPassword,
-      age: role === "student" ? age : undefined,
-      class: role === "student" ? className : undefined,
       city,
       state,
       country,
-      createdByTeacher, 
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
     });
 
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
     return res.status(201).json({
-      message: "Signup successful",
-      user
+      success: true,
+      message: "Teacher signup successful",
+      user: userResponse
     });
   } catch (err) {
     console.error("Signup error:", err);
-    return res.status(500).json({ message: "Server error..!" });
+    return res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
 
 exports.login = async (req, res) => {
-  const userId = String(req.body.userId).trim();
-  const password = String(req.body.password);
+  const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ userId });
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Invalid credentials" 
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ message: "Wrong password..!" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Invalid credentials" 
+      });
     }
 
     const token = jwt.sign(
@@ -92,17 +89,53 @@ exports.login = async (req, res) => {
     );
 
     return res.json({
-      message: "Login successfully",
-      token
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (err) {
     console.error("Login error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
 
 exports.logout = (req, res) => {
   return res.json({
-    message: "Logout successful. Please delete token on client."
+    success: true,
+    message: "Logout successful"
   });
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    console.error("Profile error:", err);
+    return res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
+  }
 };

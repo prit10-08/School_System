@@ -1,15 +1,44 @@
 const User = require("../models/User");
 const Mark = require("../models/Mark");
+const Quiz = require("../models/Quiz");
+const TeacherAvailability = require("../models/TeacherAvailability");
 const fs = require("fs");
 const csv = require("csv-parser");
 const bcrypt = require("bcryptjs");
 
+exports.getTeacherStats = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    
+    const totalStudents = await User.countDocuments({ role: "student", teacherId });
+    const totalQuizzes = await Quiz.countDocuments({ teacherId });
+    const availableSlots = await TeacherAvailability.countDocuments({ teacherId });
+    
+    // Calculate average performance (placeholder - would need actual performance data)
+    const avgPerformance = 85; // This would be calculated from actual quiz results
+    
+    res.json({
+      success: true,
+      data: {
+        totalStudents,
+        totalQuizzes,
+        availableSlots,
+        avgPerformance
+      }
+    });
+  } catch (err) {
+    console.error("Stats error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 exports.getStudents = async (req, res) => {
   try {
-    const students = await User.find({ role: "student", teacherId: req.user.id });
-    res.json(students);
+    const students = await User.find({ role: "student", teacherId: req.user.id }).select("-password");
+    res.json({ success: true, data: students });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Get students error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -25,60 +54,89 @@ exports.getMyStudents = async (req, res) => {
 
 exports.getStudentById = async (req, res) => {
   try {
-    const student = await User.findOne({  userId: req.params.userId, role: "student", teacherId: req.user.id }).select("-password");
+    const studentId = req.params.userId;
+    
+    // Try to find by MongoDB _id first, then by userId
+    let student = await User.findOne({ 
+      _id: studentId, 
+      role: "student", 
+      teacherId: req.user.id 
+    }).select("-password");
 
-    if (!student) return res.status(404).json({ message: "Student not found" });
+    // If not found by _id, try by userId
+    if (!student) {
+      student = await User.findOne({ 
+        userId: studentId, 
+        role: "student", 
+        teacherId: req.user.id 
+      }).select("-password");
+    }
 
-    return res.status(201).json({
+    if (!student) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Student not found" 
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
       message: "Get student by Teacher successful",
-      student
+      data: student
     });  
   } 
   catch (err) 
   {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    console.error('Get student by ID error:', err);
+    return res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
 exports.createStudent = async (req, res) => {
-  const { userId, name, email, password, age, class: className, city, state, country } = req.body;
+  const { userId, name, email, password, age, class: className, city, state, country, mobileNumber, role } = req.body;
 
   try {
     const exists = await User.findOne({ $or: [{ userId }, { email }] });
     if (exists) {
-      return res.status(400).json({ message: "UserId or Email already in use" });
+      return res.status(400).json({ success: false, message: "UserId or Email already in use" });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
-    
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const student = await User.create({
       role: "student",
       userId,
       name,
       email,
-      password: hashed,
+      password: hashedPassword,
       age,
+      class: className,
       city,
       state,
       country,
-      class: className,
+      mobileNumber,
       teacherId: req.user.id,
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
-
     });
-    return res.status(201).json({
-      message: "Student create successful",
-      student
-    });  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+
+    res.status(201).json({
+      success: true,
+      message: "Student created successfully",
+      data: student
+    });
+  } catch (err) {
+    console.error("Create student error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
+    
 exports.updateStudent = async (req, res) => {
   try {
-    const { name, email, age, class: className, city, state, country,timezone } = req.body;
-    const userId = req.params.userId;
+    const { name, email, age, class: className, city, state, country, timezone, mobileNumber } = req.body;
+    const studentId = req.params.userId;
 
     const update = {};
     if (name) update.name = name;
@@ -88,14 +146,16 @@ exports.updateStudent = async (req, res) => {
     if (state) update.state = state;
     if (country) update.country = country;
     if (timezone) update.timezone = timezone;
+    if (mobileNumber) update.mobileNumber = mobileNumber;
     if (email) {
       const emailExists = await User.findOne({
         email: email.toLowerCase().trim(),
-        userId: { $ne: userId }
+        _id: { $ne: studentId }
       });
 
       if (emailExists) {
         return res.status(400).json({
+          success: false,
           message: "Email already used by another user"
         });
       }
@@ -106,54 +166,96 @@ exports.updateStudent = async (req, res) => {
       update.profileImage = `/uploads/profiles/${req.file.filename}`;
     }
 
-    const student = await User.findOneAndUpdate({ userId, role: "student" },update,{ new: true }).select("-password");
+    // Try to find and update by MongoDB _id first, then by userId
+    let student = await User.findOneAndUpdate(
+      { _id: studentId, role: "student", teacherId: req.user.id },
+      update,
+      { new: true }
+    ).select("-password");
 
+    // If not found by _id, try by userId
     if (!student) {
-      return res.status(404).json({ message: "Student not found" });
+      student = await User.findOneAndUpdate(
+        { userId: studentId, role: "student", teacherId: req.user.id },
+        update,
+        { new: true }
+      ).select("-password");
     }
-
-    return res.json({
-      message: "Student profile updated successfully",
-      student
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-exports.deleteStudent = async (req, res) => {
-  try {
-    const student = await User.findOne({ userId: req.params.userId,role: "student",teacherId: req.user.id });
-    const teacherId = req.user.id;
 
     if (!student) {
       return res.status(404).json({
-        message: "Student not found or you are not allowed to delete this student"
+        success: false,
+        message: "Student not found"
       });
     }
-    await student.deleteOne();
 
-    await Mark.deleteMany({ studentUserId: req.params.userId});
-
-    return res.json({ message: "Student deleted successfully", teacherId });
+    res.json({
+      success: true,
+      message: "Student updated successfully",
+      data: student
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Update student error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+        exports.deleteStudent = async (req, res) => {
+  try {
+    const studentId = req.params.userId;
+    
+    // Try to find by MongoDB _id first, then by userId
+    let student = await User.findOne({ 
+      _id: studentId, 
+      role: "student", 
+      teacherId: req.user.id 
+    });
+
+    // If not found by _id, try by userId
+    if (!student) {
+      student = await User.findOne({ 
+        userId: studentId, 
+        role: "student", 
+        teacherId: req.user.id 
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    await User.findByIdAndDelete(student._id);
+
+    res.json({
+      success: true,
+      message: "Student deleted successfully"
+    });
+  } catch (err) {
+    console.error("Delete student error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-exports.getStudentMarks = async (req, res) => {
+    
+    exports.getStudentMarks = async (req, res) => {
   try {
     const marks = await Mark.find({
-      studentUserId: req.params.userId
+      studentUserId: req.params.userId,
+      teacherId: req.user.userId
     });
-    return res.json(marks);
+
+    res.json({
+      success: true,
+      data: marks
+    });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    console.error("Get student marks error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
+    
 exports.addMark = async (req, res) => {
   try {
     const { subject, marks } = req.body;
@@ -225,6 +327,7 @@ exports.updateMyProfile = async (req, res) => {
     if (req.body.city) update.city = req.body.city;
     if (req.body.state) update.state = req.body.state;
     if (req.body.country) update.country = req.body.country;
+    if (req.body.mobileNumber) update.mobileNumber = req.body.mobileNumber;
 
     if (req.body.email) {
       const emailExists = await User.findOne({
@@ -265,79 +368,106 @@ exports.updateMyProfile = async (req, res) => {
 };
 
 exports.uploadStudentsCSV = async (req, res) => {
-  const teacherId = req.user.id;
+  try {
+    const teacherId = req.user.id;
 
-  let inserted = 0;
-  let skipped = req.csvSkippedDetails.length;
-  const results = [...req.csvSkippedDetails];
+    let inserted = 0;
+    let skipped = req.csvSkippedDetails.length;
+    const results = [...req.csvSkippedDetails];
 
-  for (let i = 0; i < req.csvRows.length; i++) {
-    const row = req.csvRows[i];
+    for (let i = 0; i < req.csvRows.length; i++) {
+      const row = req.csvRows[i];
 
-    const alreadyInvalid = req.csvSkippedDetails.find(r => r.row === i + 2);
-    if (alreadyInvalid) continue;
+      const alreadyInvalid = req.csvSkippedDetails.find(r => r.row === i + 2);
+      if (alreadyInvalid) continue;
 
-    const {
-      userId,
-      name,
-      email,
-      password,
-      age,
-      class: className,
-      city,
-      state,
-      country
-    } = row;
-
-    const exists = await User.findOne({
-      $or: [{ userId }, { email }]
-    });
-
-    if (exists) {
-      skipped++;
-      results.push({
-        row: i + 2,
-        userId,
-        reasons: ["UserId or Email already exists"]
-      });
-      continue;
-    }
-
-    try {
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      await User.create({
-        role: "student",
+      const {
         userId,
         name,
         email,
-        password: hashedPassword,
+        password,
         age,
         class: className,
-        city: city || "",
-        state: state || "",
-        country: country || "",
-        teacherId
+        city,
+        state,
+        country,
+        mobileNumber
+      } = row;
+
+      const exists = await User.findOne({
+        $or: [{ userId }, { email }]
       });
 
-      inserted++;
-    } catch (err) {
-      skipped++;
-      results.push({
-        row: i + 2,
-        userId,
-        reasons: ["Database error: " + err.message]
-      });
+      if (exists) {
+        skipped++;
+        results.push({
+          row: i + 2,
+          userId,
+          reasons: ["UserId or Email already exists"]
+        });
+        continue;
+      }
+
+      try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await User.create({
+          role: "student",
+          userId,
+          name,
+          email,
+          password: hashedPassword,
+          age,
+          class: className,
+          city: city || "",
+          state: state || "",
+          country: country || "",
+          teacherId,
+          mobileNumber
+        });
+
+        inserted++;
+      } catch (err) {
+        console.error("Error creating student:", err);
+        skipped++;
+        results.push({
+          row: i + 2,
+          userId,
+          reasons: ["Database error: " + err.message]
+        });
+      }
     }
+
+    // Clean up uploaded file
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (err) {
+      console.error("Error deleting uploaded file:", err);
+    }
+
+    return res.json({
+      success: true,
+      message: "CSV upload completed",
+      total: req.csvRows.length,
+      inserted,
+      skipped,
+      skippedDetails: results
+    });
+  } catch (error) {
+    console.error("CSV upload error:", error);
+    
+    // Clean up uploaded file in case of error
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.error("Error deleting uploaded file:", err);
+      }
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Error processing CSV: " + error.message
+    });
   }
-
-  fs.unlinkSync(req.file.path);
-
-  return res.json({
-    message: "CSV upload completed",
-    total: req.csvRows.length,
-    inserted,
-    skipped,
-    skippedDetails: results
-  });
 };

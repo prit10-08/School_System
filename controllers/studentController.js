@@ -18,7 +18,7 @@ exports.getMyProfile = async (req, res) => {
     //     { name: 1, userId: 1, _id: 0 }
     //   );
     // }
-    res.json({ student/*createdByTeacher: teacher*/ });
+    res.json({ success: true, data: student });
   } 
   catch (err) 
   {
@@ -80,8 +80,9 @@ exports.updateMyProfile = async (req, res) => {
     const updatedStudent = await User.findOneAndUpdate({ userId, role: "student" }, update, { new: true }).select("-password");
 
     res.json({
+      success: true,
       message: "Profile updated successfully",
-      user: updatedStudent
+      data: updatedStudent
     });
   } catch (err) {
     console.error(err);
@@ -95,10 +96,54 @@ exports.getMyMarks = async (req, res) => {
       studentUserId: req.user.userId
     }).select("-__v");
 
-    res.json(marks);
+    res.json({ success: true, data: marks });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getStudentStats = async (req, res) => {
+  try {
+    const studentUserId = req.user.userId;
+    
+    // Get all marks for this student
+    const marks = await Mark.find({ studentUserId });
+    
+    // Calculate statistics
+    const totalQuizzes = marks.length;
+    let totalScore = 0;
+    let totalPossible = 0;
+    let bestScore = 0;
+    
+    marks.forEach(mark => {
+      totalScore += mark.score || 0;
+      totalPossible += mark.total || 0;
+      const percentage = mark.total > 0 ? (mark.score / mark.total) * 100 : 0;
+      if (percentage > bestScore) {
+        bestScore = percentage;
+      }
+    });
+    
+    const averageScore = totalPossible > 0 ? (totalScore / totalPossible) * 100 : 0;
+    
+    // Get last activity (most recent mark)
+    const lastActivity = marks.length > 0 ? 
+      new Date(Math.max(...marks.map(m => new Date(m.createdAt)))).toLocaleDateString() : 
+      '--';
+    
+    res.json({
+      success: true,
+      data: {
+        averageScore: averageScore.toFixed(1),
+        totalQuizzes,
+        bestScore: bestScore.toFixed(1),
+        lastActivity
+      }
+    });
+  } catch (err) {
+    console.error("Student stats error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

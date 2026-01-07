@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School System - Sign Up</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="auth-container">
+            <!-- Header -->
+            <div class="auth-header">
+                <h1 class="auth-title">Teacher Registration</h1>
+                <p class="auth-subtitle">Create your teacher account</p>
+            </div>
+
+            <!-- Signup Form -->
+            <div class="form-content">
+                <form class="auth-form" id="signup-form" enctype="multipart/form-data">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="signup-userId">User ID</label>
+                            <input type="text" id="signup-userId" name="userId" placeholder="Choose a user ID" required>
+                            <span class="error-message"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="signup-fullName">Full Name</label>
+                            <input type="text" id="signup-fullName" name="name" placeholder="Enter your full name" required>
+                            <span class="error-message"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="signup-email">Email Address</label>
+                        <input type="email" id="signup-email" name="email" placeholder="Enter your email" required>
+                        <span class="error-message"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <div class="password-input">
+                            <input type="password" id="signup-password" name="password" placeholder="Create a password" required>
+                            <button type="button" class="toggle-password" data-target="signup-password">
+                                <span class="eye-icon">👁️</span>
+                            </button>
+                        </div>
+                        <small class="password-hint">Password must be at least 6 characters with uppercase, lowercase, and numbers</small>
+                        <span class="error-message"></span>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="signup-city">City</label>
+                            <input type="text" id="signup-city" name="city" placeholder="Your city" required>
+                            <span class="error-message"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="signup-state">State</label>
+                            <input type="text" id="signup-state" name="state" placeholder="Your state" required>
+                            <span class="error-message"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="signup-country">Country</label>
+                            <input type="text" id="signup-country" name="country" placeholder="Your country" required>
+                            <span class="error-message"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="signup-role">Role</label>
+                            <select id="signup-role" name="role" required>
+                                <option value="teacher">Teacher</option>
+                            </select>
+                            <span class="error-message"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="class-group" style="display: none;">
+                        <label for="signup-class">Class</label>
+                        <input type="text" id="signup-class" name="class" placeholder="Your class (e.g., 10th Grade)">
+                        <span class="error-message"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="signup-profileImage">Profile Image (Optional)</label>
+                        <div class="file-upload">
+                            <input type="file" id="signup-profileImage" name="profileImage" accept="image/*">
+                            <label for="signup-profileImage" class="file-label">
+                                <span class="upload-icon">📷</span>
+                                <span class="upload-text">Choose Profile Image</span>
+                            </label>
+                        </div>
+                        <small class="file-hint">Supported formats: JPEG, PNG. Max size: 5MB</small>
+                        <span class="error-message"></span>
+                    </div>
+
+                    <button type="submit" class="auth-btn">Create Account</button>
+                </form>
+
+                <!-- Page Link -->
+                <div class="page-link">
+                    <p>Already have an account? <a href="/index.html">Sign In</a></p>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading-spinner" id="loading">
+                <div class="spinner"></div>
+                <p>Creating account...</p>
+            </div>
+
+            <!-- Success/Error Messages -->
+            <div class="message-container" id="message-container"></div>
+        </div>
+    </div>
+
+    <script src="/js/auth.js"></script>
+</body>
+</html>

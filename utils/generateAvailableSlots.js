@@ -41,7 +41,6 @@ const generateAvailableSlots = async (
   if (studentRedisKey) {
     const studentCached = await getCache(studentRedisKey);
     if (studentCached) {
-      console.log("STUDENT CACHE HIT");
       return JSON.parse(studentCached);
     }
   }
@@ -63,7 +62,6 @@ const generateAvailableSlots = async (
 
      if (studentRedisKey) {
       await setCache(studentRedisKey, convertedSlots);
-      console.log("STUDENT CACHE CREATED");
     }
 
     return convertedSlots;
@@ -114,7 +112,6 @@ const generateAvailableSlots = async (
 
   if (studentRedisKey) {
     await setCache(studentRedisKey, slots);
-    console.log("STUDENT CACHE CREATED");
   }
 
   return slots;

@@ -52,6 +52,7 @@ const UserSchema = new mongoose.Schema(
     state: { type: String, default: "" },
     country: { type: String, default: "" },
     profileImage: { type: String, default: "" },
+    mobileNumber: { type: String, default: "" },
 
     teacherId: {
       type: mongoose.Schema.Types.ObjectId,   

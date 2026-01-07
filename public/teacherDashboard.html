@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard - School System</title>
+    <link rel="stylesheet" href="/css/teacherDashboard.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-graduation-cap"></i>
+                <span>School System</span>
+            </div>
+            
+            <nav class="nav">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i>
+                    Dashboard
+                </a>
+                <a href="#" class="nav-item" data-page="students">
+                    <i class="fas fa-users"></i>
+                    Students
+                </a>
+                <a href="#" class="nav-item" data-page="quiz">
+                    <i class="fas fa-question-circle"></i>
+                    Quiz Management
+                </a>
+                <a href="#" class="nav-item" data-page="availability">
+                    <i class="fas fa-clock"></i>
+                    Availability
+                </a>
+                <a href="#" class="nav-item" data-page="marks">
+                    <i class="fas fa-chart-bar"></i>
+                    Marks
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Header with Profile -->
+            <header class="header">
+                <h1>Teacher Dashboard</h1>
+                <div class="header-right">
+                    <div class="search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Search students, quizzes...">
+                    </div>
+                    <div class="profile-dropdown">
+                        <img src="" alt="Teacher" class="profile-img" id="headerProfileImage">
+                        <div class="profile-info">
+                            <span class="teacher-name" id="headerTeacherName">Loading...</span>
+                            <span class="teacher-role">Teacher</span>
+                        </div>
+                        <button class="dropdown-toggle">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="#" class="dropdown-item" data-page="profile">
+                                <i class="fas fa-user"></i>
+                                <span>Profile</span>
+                            </a>
+                            <a href="#" class="dropdown-item" id="logoutBtn">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Logout</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content">
+                <!-- Dashboard Page -->
+                <div class="page active" id="dashboard-page">
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-icon blue">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Total Students</h3>
+                                <p class="stat-number" id="totalStudents">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">
+                                <i class="fas fa-question-circle"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Total Quizzes</h3>
+                                <p class="stat-number" id="totalQuizzes">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange">
+                                <i class="fas fa-calendar-check"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Available Slots</h3>
+                                <p class="stat-number" id="availableSlots">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon purple">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Avg Performance</h3>
+                                <p class="stat-number" id="avgPerformance">0%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cards">
+                        <div class="card">
+                            <h3>Recent Students</h3>
+                            <div id="recentStudents">
+                                <p class="empty">No students added yet</p>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <h3>Recent Quizzes</h3>
+                            <div id="recentQuizzes">
+                                <p class="empty">No quizzes created yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Students Management Page -->
+                <div class="page" id="students-page">
+                    <div class="page-header">
+                        <h2>Students Management</h2>
+                        <div class="header-actions">
+                            <button class="btn-primary" id="addStudentBtn">
+                                <i class="fas fa-plus"></i>
+                                Add Student
+                            </button>
+                            <button class="btn-secondary" id="uploadCsvBtn">
+                                <i class="fas fa-file-upload"></i>
+                                Upload CSV
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="students-grid" id="studentsGrid">
+                        <p class="empty">No students found</p>
+                    </div>
+                </div>
+
+                <!-- Quiz Management Page -->
+                <div class="page" id="quiz-page">
+                    <div class="page-header">
+                        <h2>Quiz Management</h2>
+                        <button class="btn-primary" id="createQuizBtn">
+                            <i class="fas fa-plus"></i>
+                            Create Quiz
+                        </button>
+                    </div>
+                    
+                    <div class="quiz-grid" id="quizList">
+                        <p class="empty">No quizzes created yet</p>
+                    </div>
+                </div>
+
+                <!-- Availability Page -->
+                <div class="page" id="availability-page">
+                    <div class="page-header">
+                        <h2>Manage Availability</h2>
+                        <button class="btn-primary" id="addAvailabilityBtn">
+                            <i class="fas fa-plus"></i>
+                            Add Slot
+                        </button>
+                    </div>
+                    
+                    <div class="form-card">
+                        <form id="availabilityForm">
+                            <div class="form-row">
+                                <input type="date" id="availabilityDate" required>
+                                <input type="time" id="startTime" required>
+                                <input type="time" id="endTime" required>
+                                <button type="submit" class="btn-primary">Add</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Your Available Slots</h3>
+                        <div id="availabilitySlots">
+                            <p class="empty">No slots added</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Marks Page -->
+                <div class="page" id="marks-page">
+                    <div class="page-header">
+                        <h2>Student Marks</h2>
+                        <button class="btn-primary" id="addMarksBtn">
+                            <i class="fas fa-plus"></i>
+                            Add Marks
+                        </button>
+                    </div>
+                    
+                    <div class="form-card">
+                        <form id="marksForm">
+                            <div class="form-row">
+                                <select id="studentSelect" required>
+                                    <option value="">Select Student</option>
+                                </select>
+                                <input type="text" id="subject" placeholder="Subject" required>
+                                <input type="number" id="marks" placeholder="Marks" min="0" max="100" required>
+                                <button type="submit" class="btn-primary">Add</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Marks Record</h3>
+                        <div class="table-container">
+                            <table class="marks-table">
+                                <thead>
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Subject</th>
+                                        <th>Marks</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5" class="empty">No records found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Page -->
+                <div class="page" id="profile-page">
+                    <div class="profile-card">
+                        <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
+                        <div class="profile-info">
+                            <h2 id="profileName">Teacher Name</h2>
+                            <p id="profileEmail">teacher@example.com</p>
+                            <span class="role-badge">Teacher</span>
+                        </div>
+                        <button class="btn-primary" id="editProfileBtn">
+                            <i class="fas fa-edit"></i>
+                            Edit Profile
+                        </button>
+                    </div>
+                    
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h3>Personal Information</h3>
+                            <div class="info-list">
+                                <div class="info-item">
+                                    <span>Teacher ID:</span>
+                                    <span id="profileUserId">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>Mobile:</span>
+                                    <span id="profileMobile">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>City:</span>
+                                    <span id="profileCity">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>State:</span>
+                                    <span id="profileState">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal" id="addStudentModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Student</h3>
+                <button class="modal-close" id="closeStudentModal">&times;</button>
+            </div>
+            <form id="addStudentForm" enctype="multipart/form-data">
+                <div class="form-row">
+                    <input type="text" name="userId" placeholder="User ID" required>
+                    <input type="text" name="name" placeholder="Full Name" required>
+                </div>
+                <div class="form-row">
+                    <input type="email" name="email" placeholder="Email" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                </div>
+                <div class="form-row">
+                    <input type="number" name="age" placeholder="Age" min="1" max="120" required>
+                    <input type="tel" name="mobileNo" placeholder="Mobile Number" maxlength="10" required>
+                </div>
+                <div class="form-row">
+                    <input type="text" name="city" placeholder="City" required>
+                    <input type="text" name="state" placeholder="State" required>
+                </div>
+                <div class="form-row">
+                    <input type="text" name="country" placeholder="Country" required>
+                    <input type="hidden" name="role" value="student">
+                </div>
+                <div class="form-row">
+                    <input type="text" name="class" placeholder="Class (Optional)">
+                </div>
+                <div class="form-group">
+                    <label>Profile Image (Optional)</label>
+                    <input type="file" name="profileImage" accept="image/*">
+                </div>
+                <button type="submit" class="btn-primary">Add Student</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="uploadCsvModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Students CSV</h3>
+                <button class="modal-close" id="closeCsvModal">&times;</button>
+            </div>
+            <form id="uploadCsvForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Choose CSV File</label>
+                    <input type="file" name="csv" accept=".csv" required>
+                    <div class="csv-help">
+                        <p><strong>CSV Format:</strong> userId,name,email,password,age,class,city,state,country</p>
+                        <p><strong>Sample:</strong> s001,John Doe,john@example.com,password123,20,BCA,New York,NY,USA</p>
+                        <a href="/uploads/csv/SampleStudentCSV.csv" download class="download-sample">
+                            <i class="fas fa-download"></i> Download Sample CSV
+                        </a>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">Upload CSV</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createQuizModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Quiz</h3>
+                <button class="modal-close" id="closeQuizModal">&times;</button>
+            </div>
+            <form id="createQuizForm">
+                <div class="form-group">
+                    <label>Quiz Title</label>
+                    <input type="text" name="title" placeholder="Enter quiz title" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Subject</label>
+                        <input type="text" name="subject" placeholder="Enter subject (e.g., Mathematics, Science)" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Class</label>
+                        <input type="text" name="class" placeholder="Enter class (e.g., 10A, BCA, etc.)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Duration (minutes)</label>
+                    <input type="number" name="duration" placeholder="Duration in minutes" min="1" required>
+                </div>
+                <div id="questionsContainer">
+                    <h4>Questions</h4>
+                    <div class="question-item">
+                        <input type="text" name="questions[]" placeholder="Question 1" required>
+                        <input type="text" name="options1[]" placeholder="Option A" required>
+                        <input type="text" name="options1[]" placeholder="Option B" required>
+                        <input type="text" name="options1[]" placeholder="Option C" required>
+                        <input type="text" name="options1[]" placeholder="Option D" required>
+                        <select name="answers[]">
+                            <option value="0">A</option>
+                            <option value="1">B</option>
+                            <option value="2">C</option>
+                            <option value="3">D</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary" id="addQuestionBtn">Add Question</button>
+                <button type="submit" class="btn-primary">Create Quiz</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="modal" id="editProfileModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Profile</h3>
+                <button class="modal-close" id="closeEditProfileModal">&times;</button>
+            </div>
+            <form id="editProfileForm" enctype="multipart/form-data">
+                <div class="form-row">
+                    <input type="text" id="editName" name="name" placeholder="Full Name" required>
+                    <input type="email" id="editEmail" name="email" placeholder="Email" required>
+                </div>
+                <div class="form-row">
+                    <input type="tel" id="editMobileNumber" name="mobileNumber" placeholder="Mobile Number" maxlength="10">
+                    <input type="text" id="editCity" name="city" placeholder="City">
+                </div>
+                <div class="form-row">
+                    <input type="text" id="editState" name="state" placeholder="State">
+                    <input type="text" id="editCountry" name="country" placeholder="Country">
+                </div>
+                <div class="form-group">
+                    <label>Profile Image (Optional)</label>
+                    <input type="file" name="image" accept="image/*">
+                    <div id="currentProfileImageContainer" style="margin-top: 10px;">
+                        <img id="currentProfileImage" src="" alt="Current Profile" style="max-width: 100px; max-height: 100px; border-radius: 50%;">
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">Update Profile</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Messages Container -->
+    <div class="messages" id="messages"></div>
+
+    <script src="/js/teacherDashboard.js"></script>
+</body>
+</html>
