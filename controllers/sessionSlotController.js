@@ -9,53 +9,70 @@ exports.createSessionSlots = async (req, res) => {
   try {
     const { title, date, sessionDuration, breakDuration, student_id } = req.body;
 
+    // Input sanitization
+    const sanitizedTitle = title?.trim().replace(/[<>]/g, '');
     const teacherId = req.user.id;
     const teacherTimezone = req.user.timezone || "Asia/Kolkata";
 
+    // Validate date format and parse
     const parsedDate = moment(date, "DD-MM-YYYY").startOf("day").toDate();
+    if (!parsedDate || isNaN(parsedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Please use DD-MM-YYYY format"
+      });
+    }
 
+    // Check for duplicate session
     const duplicateSession = await SessionSlot.findOne({
       teacherId,
-      title: title.trim(),
+      title: sanitizedTitle,
       date: parsedDate
     });
 
     if (duplicateSession) {
-      return res.status(400).json({
+      return res.status(409).json({
+        success: false,
         message: "Session with same title already exists on this date"
       });
     }
 
+    // Check teacher availability
     const availability = await TeacherAvailability.findOne({ teacherId });
     if (!availability) {
       return res.status(400).json({
-        message: "Teacher availability not set"
+        success: false,
+        message: "Please set your weekly availability first"
       });
     }
 
+    // Check if date is a holiday
     const isHoliday = availability.holidays.some(
-      h => parsedDate >= h.startDate && parsedDate <= h.endDate
+      h => parsedDate >= new Date(h.startDate) && parsedDate <= new Date(h.endDate)
     );
 
     if (isHoliday) {
       return res.status(400).json({
-        message: "Session date is a holiday"
+        success: false,
+        message: "Cannot create sessions on holidays"
       });
     }
 
+    // Check day availability
     const day = moment(parsedDate).format("dddd").toLowerCase();
     const dayAvailability = availability.weeklyAvailability.find(
       d => d.day === day
     );
 
-    if (!dayAvailability) {
+    if (!dayAvailability || !dayAvailability.startTime || !dayAvailability.endTime) {
       return res.status(400).json({
-        message: "Teacher is not available on this day"
+        success: false,
+        message: `Teacher is not available on ${day}`
       });
     }
 
+    // Validate student if provided
     let allowedStudentId = null;
-
     if (student_id) {
       const student = await User.findOne({
         _id: student_id,
@@ -64,32 +81,37 @@ exports.createSessionSlots = async (req, res) => {
 
       if (!student) {
         return res.status(403).json({
+          success: false,
           message: "Invalid student for this teacher"
         });
       }
       allowedStudentId = student._id;
     }
 
+    // Check for existing session on same date
     const existingSession = await SessionSlot.findOne({
       teacherId,
       date: parsedDate
     });
 
     if (existingSession) {
-      return res.status(400).json({
+      return res.status(409).json({
+        success: false,
         message: "Session slots already created for this date"
       });
     }
 
+    // Create session
     const session = await SessionSlot.create({
       teacherId,
-      title,
+      title: sanitizedTitle,
       date: parsedDate,
-      sessionDuration,
-      breakDuration,
+      sessionDuration: Math.max(15, Math.min(240, parseInt(sessionDuration) || 60)),
+      breakDuration: Math.max(0, Math.min(60, parseInt(breakDuration) || 10)),
       allowedStudentId
     });
 
+    // Generate available slots
     const slots = await generateAvailableSlots(
       {
         date: parsedDate,
@@ -98,23 +120,43 @@ exports.createSessionSlots = async (req, res) => {
         teacherId
       },
       {
-        Duration: sessionDuration,
+        Duration: session.sessionDuration,
         breakDuration,
         teacherTimezone
       },
       []
     );
 
+    // Clear relevant cache with pattern matching for better invalidation
+    if (redisClient?.isOpen) {
+      const cachePattern = `teacher:${teacherId}:sessions:*`;
+      const keys = await redisClient.keys(cachePattern);
+      if (keys && keys.length > 0) {
+        await redisClient.del(keys);
+      }
+    }
+
     return res.status(201).json({
+      success: true,
       message: "Session slots created successfully",
-      sessionId: session._id,
-      title: session.title,
-      date: moment(session.date).format("DD-MM-YYYY"),
-      slots: slots
+      data: {
+        sessionId: session._id,
+        title: session.title,
+        date: moment(session.date).format("DD-MM-YYYY"),
+        day: moment(session.date).format("dddd"),
+        sessionDuration: session.sessionDuration,
+        breakDuration: session.breakDuration,
+        totalSlots: slots.length,
+        slots
+      }
     });
 
   } catch (err) {
-    res.status(500).json({ message1: err.message });
+    console.error('Error in createSessionSlots:', err);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while creating session slots"
+    });
   }
 };
 
@@ -307,13 +349,13 @@ exports.confirmSessionSlot = async (req, res) => {
 
     await session.save();
 
+    // Clear relevant student cache with pattern matching
     if (redisClient?.isOpen) {
-      await redisClient.del(
-        `student:${studentId}:confirmed-sessions:page:1:limit:10`
-      );
-      await redisClient.del(
-        `student:${studentId}:session-slots`
-      );
+      const studentCachePattern = `student:${studentId}:*`;
+      const studentKeys = await redisClient.keys(studentCachePattern);
+      if (studentKeys && studentKeys.length > 0) {
+        await redisClient.del(studentKeys);
+      }
     }
 
     res.json({
@@ -418,19 +460,30 @@ exports.getMyConfirmedSessions = async (req, res) => {
     res.json(finalResponse);
 
   } catch (error) {
+    console.error('Error in getMyConfirmedSessions:', error);
     res.status(500).json({ message: error.message });
   }
 };
+
 
 exports.getTeacherSessions = async (req, res) => {
   try {
     const teacherId = req.user.id;
     const teacherTZ = req.user.timezone || "Asia/Kolkata";
+
+    // Parse query parameters with defaults
     const type = req.query.type || "all";
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+    const status = req.query.status || "all";
+    const dateFrom = req.query.dateFrom;
+    const dateTo = req.query.dateTo;
 
-    const cacheKey = `teacher:${teacherId}:sessions:${type}`;
+    // Build cache key
+    const cacheKey = `teacher:${teacherId}:sessions:${type}:${page}:${limit}:${status}:${dateFrom || ''}:${dateTo || ''}`;
 
-    // 🔴 TRY REDIS
+    // Try Redis cache first
     if (redisClient?.isOpen) {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
@@ -438,46 +491,182 @@ exports.getTeacherSessions = async (req, res) => {
       }
     }
 
-    // 👉 EXISTING LOGIC
+    // Build query based on filters
     const query = { teacherId };
-    if (type === "personal") query.allowedStudentId = { $ne: null };
-    if (type === "common") query.allowedStudentId = null;
 
+    if (type === "personal") {
+      query.allowedStudentId = { $ne: null };
+    } else if (type === "common") {
+      query.allowedStudentId = null;
+    }
+
+    // Add date range filter if provided
+    if (dateFrom || dateTo) {
+      query.date = {};
+      if (dateFrom) {
+        const fromDate = moment(dateFrom, "DD-MM-YYYY").startOf("day").toDate();
+        if (!isNaN(fromDate.getTime())) {
+          query.date.$gte = fromDate;
+        }
+      }
+      if (dateTo) {
+        const toDate = moment(dateTo, "DD-MM-YYYY").endOf("day").toDate();
+        if (!isNaN(toDate.getTime())) {
+          query.date.$lte = toDate;
+        }
+      }
+    }
+
+    // Get total count for pagination
     const totalSessions = await SessionSlot.countDocuments(query);
 
+    // Fetch sessions with pagination
     const sessions = await SessionSlot.find(query)
       .populate("allowedStudentId", "name email")
       .populate("bookedSlots.bookedBy", "name email")
+      .sort({ date: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
+    // Format response
     const response = {
+      success: true,
       pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalSessions / limit),
         totalSessions,
-        currentPage: 1,
-        totalPages: 1,
-        limit: sessions.length
+        limit,
+        hasNext: page < Math.ceil(totalSessions / limit),
+        hasPrev: page > 1
       },
-      sessions: sessions.map(s => ({
-        sessionId: s._id,
-        title: s.title,
-        date: moment(s.date).tz(teacherTZ).format("DD-MM-YYYY"),
-        allowedStudent: s.allowedStudentId,
-        bookedSlots: s.bookedSlots.map(b => ({
-          startTime: moment(b.startTime).tz(teacherTZ).format("HH:mm"),
-          endTime: moment(b.endTime).tz(teacherTZ).format("HH:mm"),
-          bookedBy: b.bookedBy
-        }))
+      filters: {
+        type,
+        status,
+        dateRange: dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : null
+      },
+      sessions: await Promise.all(sessions.map(async (s) => {
+        // Get availability for each session's specific date
+        const sessionDate = moment(s.date).format("YYYY-MM-DD");
+        const dayOfWeek = moment(s.date).format("dddd").toLowerCase();
+        let dayAvailability;
+        
+        try {
+          // Get teacher's weekly availability (this is how it's stored)
+          const teacherAvailability = await TeacherAvailability.findOne({
+            teacherId
+          });
+          
+          console.log('Teacher availability found:', teacherAvailability);
+          
+          if (teacherAvailability && teacherAvailability.weeklyAvailability) {
+            const weeklyDay = teacherAvailability.weeklyAvailability.find(
+              d => d.day.toLowerCase() === dayOfWeek
+            );
+            
+            console.log('Weekly day found for', dayOfWeek, ':', weeklyDay);
+            
+            if (weeklyDay && weeklyDay.isAvailable) {
+              dayAvailability = {
+                startTime: weeklyDay.startTime,
+                endTime: weeklyDay.endTime,
+                weeklyAvailability: teacherAvailability.weeklyAvailability
+              };
+              console.log('Using teacher availability:', weeklyDay);
+            }
+          }
+          
+          // Also check for date-specific availability (override)
+          const dateSpecificAvailability = await TeacherAvailability.findOne({
+            teacherId,
+            date: sessionDate
+          });
+          
+          if (dateSpecificAvailability && dateSpecificAvailability.startTime && dateSpecificAvailability.endTime) {
+            dayAvailability = {
+              startTime: dateSpecificAvailability.startTime,
+              endTime: dateSpecificAvailability.endTime,
+              weeklyAvailability: teacherAvailability?.weeklyAvailability || []
+            };
+            console.log('Using date-specific availability for', sessionDate);
+          }
+          
+        } catch (error) {
+          console.log('Error fetching availability for session date:', sessionDate, error);
+          dayAvailability = null;
+        }
+
+        // Only use default if absolutely no availability found
+        if (!dayAvailability) {
+          console.log('No availability found for session date:', sessionDate, 'using default 9-5');
+          dayAvailability = {
+            startTime: "09:00",
+            endTime: "17:00",
+            weeklyAvailability: [{
+              day: dayOfWeek,
+              startTime: "09:00",
+              endTime: "17:00",
+              isAvailable: true
+            }]
+          };
+        }
+
+        // Generate available slots for this session using the actual availability
+        const weeklyAvailability = dayAvailability?.weeklyAvailability?.find(
+          d => d.day.toLowerCase() === dayOfWeek
+        );
+        
+        let slots = [];
+        if (weeklyAvailability && weeklyAvailability.startTime && weeklyAvailability.endTime && weeklyAvailability.isAvailable) {
+          slots = await generateAvailableSlots(
+            {
+              date: s.date,
+              availability: weeklyAvailability,
+              sessionId: s._id,
+              teacherId
+            },
+            {
+              Duration: s.sessionDuration,
+              breakDuration: s.breakDuration,
+              teacherTimezone: teacherTZ
+            },
+            s.bookedSlots || []
+          );
+        }
+        
+        return {
+          sessionId: s._id,
+          title: s.title,
+          date: moment(s.date).tz(teacherTZ).format("DD-MM-YYYY"),
+          day: moment(s.date).tz(teacherTZ).format("dddd"),
+          sessionDuration: s.sessionDuration,
+          breakDuration: s.breakDuration,
+          allowedStudent: s.allowedStudentId,
+          totalSlots: slots.length,
+          slots: slots,
+          bookedSlots: s.bookedSlots?.map(b => ({
+            startTime: moment(b.startTime).tz(teacherTZ).format("HH:mm"),
+            endTime: moment(b.endTime).tz(teacherTZ).format("HH:mm"),
+            bookedBy: b.bookedBy
+          })) || [],
+          createdAt: moment(s.createdAt).tz(teacherTZ).format("DD-MM-YYYY HH:mm"),
+          updatedAt: moment(s.updatedAt).tz(teacherTZ).format("DD-MM-YYYY HH:mm")
+        };
       }))
     };
 
-    // 🔴 CACHE RESULT
+    // Cache the response
     if (redisClient?.isOpen) {
-      await redisClient.setEx(cacheKey, 60, JSON.stringify(response));
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(response)); // 5 minutes cache
     }
 
     res.json(response);
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in getTeacherSessions:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching teacher sessions"
+    });
   }
 };

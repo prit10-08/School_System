@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const Mark = require("../models/Mark");
 const Quiz = require("../models/Quiz");
+const SessionSlot = require("../models/SessionSlot");
 const TeacherAvailability = require("../models/TeacherAvailability");
 const fs = require("fs");
 const csv = require("csv-parser");
@@ -12,18 +13,14 @@ exports.getTeacherStats = async (req, res) => {
     
     const totalStudents = await User.countDocuments({ role: "student", teacherId });
     const totalQuizzes = await Quiz.countDocuments({ teacherId });
-    const availableSlots = await TeacherAvailability.countDocuments({ teacherId });
-    
-    // Calculate average performance (placeholder - would need actual performance data)
-    const avgPerformance = 85; // This would be calculated from actual quiz results
+    const totalSessions = await SessionSlot.countDocuments({ teacherId });
     
     res.json({
       success: true,
       data: {
         totalStudents,
         totalQuizzes,
-        availableSlots,
-        avgPerformance
+        totalSessions
       }
     });
   } catch (err) {

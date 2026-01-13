@@ -1,78 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teacher Dashboard - School System</title>
     <link rel="stylesheet" href="/css/teacherDashboard.css">
+    <link rel="stylesheet" href="/css/sidebar.css">
+    <link rel="stylesheet" href="/css/header.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
+
 <body>
     <div class="dashboard">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="logo">
-                <i class="fas fa-graduation-cap"></i>
-                <span>School System</span>
-            </div>
-            
-            <nav class="nav">
-                <a href="#" class="nav-item active" data-page="dashboard">
-                    <i class="fas fa-home"></i>
-                    Dashboard
-                </a>
-                <a href="#" class="nav-item" data-page="students">
-                    <i class="fas fa-users"></i>
-                    Students
-                </a>
-                <a href="#" class="nav-item" data-page="quiz">
-                    <i class="fas fa-question-circle"></i>
-                    Quiz Management
-                </a>
-                <a href="#" class="nav-item" data-page="availability">
-                    <i class="fas fa-clock"></i>
-                    Availability
-                </a>
-                <a href="#" class="nav-item" data-page="marks">
-                    <i class="fas fa-chart-bar"></i>
-                    Marks
-                </a>
-            </nav>
-        </aside>
+        <!-- Include Sidebar -->
+        <div id="sidebar-container"></div>
 
         <!-- Main Content -->
         <main class="main">
-            <!-- Header with Profile -->
-            <header class="header">
-                <h1>Teacher Dashboard</h1>
-                <div class="header-right">
-                    <div class="search">
-                        <i class="fas fa-search"></i>
-                        <input type="text" placeholder="Search students, quizzes...">
-                    </div>
-                    <div class="profile-dropdown">
-                        <img src="" alt="Teacher" class="profile-img" id="headerProfileImage">
-                        <div class="profile-info">
-                            <span class="teacher-name" id="headerTeacherName">Loading...</span>
-                            <span class="teacher-role">Teacher</span>
-                        </div>
-                        <button class="dropdown-toggle">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
-                        <div class="dropdown-menu">
-                            <a href="#" class="dropdown-item" data-page="profile">
-                                <i class="fas fa-user"></i>
-                                <span>Profile</span>
-                            </a>
-                            <a href="#" class="dropdown-item" id="logoutBtn">
-                                <i class="fas fa-sign-out-alt"></i>
-                                <span>Logout</span>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <!-- Include Header -->
+            <div id="header-container"></div>
 
             <div class="content">
                 <!-- Dashboard Page -->
@@ -98,20 +46,11 @@
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon orange">
-                                <i class="fas fa-calendar-check"></i>
+                                <i class="fas fa-calendar-alt"></i>
                             </div>
                             <div class="stat-info">
-                                <h3>Available Slots</h3>
-                                <p class="stat-number" id="availableSlots">0</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon purple">
-                                <i class="fas fa-chart-line"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>Avg Performance</h3>
-                                <p class="stat-number" id="avgPerformance">0%</p>
+                                <h3>Total Sessions</h3>
+                                <p class="stat-number" id="totalSessions">0</p>
                             </div>
                         </div>
                     </div>
@@ -127,6 +66,12 @@
                             <h3>Recent Quizzes</h3>
                             <div id="recentQuizzes">
                                 <p class="empty">No quizzes created yet</p>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <h3>Recent Sessions</h3>
+                            <div id="recentSessions">
+                                <p class="empty">No sessions created yet</p>
                             </div>
                         </div>
                     </div>
@@ -147,7 +92,7 @@
                             </button>
                         </div>
                     </div>
-                    
+
                     <div class="students-grid" id="studentsGrid">
                         <p class="empty">No students found</p>
                     </div>
@@ -162,128 +107,209 @@
                             Create Quiz
                         </button>
                     </div>
-                    
+
                     <div class="quiz-grid" id="quizList">
                         <p class="empty">No quizzes created yet</p>
                     </div>
                 </div>
-
                 <!-- Availability Page -->
                 <div class="page" id="availability-page">
-                    <div class="page-header">
+                    <div class="availability-header">
                         <h2>Manage Availability</h2>
-                        <button class="btn-primary" id="addAvailabilityBtn">
-                            <i class="fas fa-plus"></i>
-                            Add Slot
-                        </button>
                     </div>
-                    
-                    <div class="form-card">
-                        <form id="availabilityForm">
-                            <div class="form-row">
-                                <input type="date" id="availabilityDate" required>
-                                <input type="time" id="startTime" required>
-                                <input type="time" id="endTime" required>
-                                <button type="submit" class="btn-primary">Add</button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Your Available Slots</h3>
-                        <div id="availabilitySlots">
-                            <p class="empty">No slots added</p>
+
+                    <!-- Current Availability Display -->
+                    <div class="schedule-card">
+                        <div class="schedule-header">
+                            <h3><i class="fas fa-clock"></i> Your Current Weekly Availability</h3>
+                        </div>
+
+                        <!-- Days List -->
+                        <div id="currentSchedule" class="schedule-display"></div>
+
+                        <!-- Save Button Bottom Right -->
+                        <div style="display:flex; justify-content:flex-end; margin-top:15px;">
+                            <button class="btn btn-primary btn-sm" id="saveAvailabilityBtn" style="display: none;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Marks Page -->
-                <div class="page" id="marks-page">
+                <!-- Holidays Page -->
+                <div class="page" id="holidays-page">
+                    <!-- Header Section -->
                     <div class="page-header">
-                        <h2>Student Marks</h2>
-                        <button class="btn-primary" id="addMarksBtn">
+                        <h2>Manage Holidays</h2>
+                        <button class="btn-primary" id="addHolidayBtn">
                             <i class="fas fa-plus"></i>
-                            Add Marks
+                            Add Holiday
                         </button>
                     </div>
-                    
-                    <div class="form-card">
-                        <form id="marksForm">
-                            <div class="form-row">
-                                <select id="studentSelect" required>
-                                    <option value="">Select Student</option>
-                                </select>
-                                <input type="text" id="subject" placeholder="Subject" required>
-                                <input type="number" id="marks" placeholder="Marks" min="0" max="100" required>
-                                <button type="submit" class="btn-primary">Add</button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>Marks Record</h3>
-                        <div class="table-container">
-                            <table class="marks-table">
-                                <thead>
-                                    <tr>
-                                        <th>Student</th>
-                                        <th>Subject</th>
-                                        <th>Marks</th>
-                                        <th>Date</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td colspan="5" class="empty">No records found</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Profile Page -->
-                <div class="page" id="profile-page">
-                    <div class="profile-card">
-                        <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
-                        <div class="profile-info">
-                            <h2 id="profileName">Teacher Name</h2>
-                            <p id="profileEmail">teacher@example.com</p>
-                            <span class="role-badge">Teacher</span>
+                    <!-- All Holidays Container -->
+                    <div class="all-holidays-container">
+                        <h3 class="section-title">All Holidays</h3>
+
+                        <!-- Filter Dropdown -->
+                        <div class="filter-section">
+                            <select id="holidayFilter" class="holiday-filter-select">
+                                <option value="all" selected>All</option>
+                                <option value="public">Public</option>
+                                <option value="personal">Personal</option>
+                            </select>
                         </div>
-                        <button class="btn-primary" id="editProfileBtn">
-                            <i class="fas fa-edit"></i>
-                            Edit Profile
-                        </button>
-                    </div>
-                    
-                    <div class="info-grid">
-                        <div class="info-card">
-                            <h3>Personal Information</h3>
-                            <div class="info-list">
-                                <div class="info-item">
-                                    <span>Teacher ID:</span>
-                                    <span id="profileUserId">-</span>
-                                </div>
-                                <div class="info-item">
-                                    <span>Mobile:</span>
-                                    <span id="profileMobile">-</span>
-                                </div>
-                                <div class="info-item">
-                                    <span>City:</span>
-                                    <span id="profileCity">-</span>
-                                </div>
-                                <div class="info-item">
-                                    <span>State:</span>
-                                    <span id="profileState">-</span>
-                                </div>
+
+                        <!-- Holiday List -->
+                        <div class="holidays-list" id="holidaysList">
+                            <div class="empty">
+                                <i class="fas fa-calendar-times"></i>
+                                <p>No holidays added yet</p>
+                                <small>Click "Add Holiday" to create a new holiday</small>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
+
+            <!-- Sessions Page -->
+            <div class="page" id="sessions-page">
+                <!-- Header Section -->
+                <div class="page-header">
+                    <h2>Manage Sessions</h2>
+                    <button class="btn-primary" id="addSessionBtn">
+                        <i class="fas fa-plus"></i>
+                        Create Session
+                    </button>
+                </div>
+
+                <!-- Sessions Container -->
+                <div class="sessions-container">
+                    <!-- Filter Section -->
+                    <div class="sessions-filter-section">
+                        <div class="filter-row">
+                            <select id="sessionTypeFilter" class="session-filter-select">
+                                <option value="all" selected>All Sessions</option>
+                                <option value="personal">Personal</option>
+                                <option value="common">Common</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Sessions List -->
+                    <div class="sessions-list" id="sessionsList">
+                        <div class="empty">
+                            <i class="fas fa-calendar-alt"></i>
+                            <p>No sessions created yet</p>
+                            <small>Click "Create Session" to create a new session</small>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-container" id="sessionsPagination" style="display: none;">
+                        <div class="pagination-info">
+                            <span id="paginationInfo">Showing 0 of 0 sessions</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button class="btn-pagination" id="prevPageBtn" disabled>
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span id="currentPage">1</span>
+                            <button class="btn-pagination" id="nextPageBtn" disabled>
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Marks Page -->
+            <div class="page" id="marks-page">
+                <div class="page-header">
+                    <h2>Student Marks</h2>
+                    <button class="btn-primary" id="addMarksBtn">
+                        <i class="fas fa-plus"></i>
+                        Add Marks
+                    </button>
+                </div>
+
+                <div class="form-card">
+                    <form id="marksForm">
+                        <div class="form-row">
+                            <select id="marksStudentSelect" required>
+                                <option value="">Select Student</option>
+                            </select>
+                            <input type="text" id="subject" placeholder="Subject" required>
+                            <input type="number" id="marks" placeholder="Marks" min="0" max="100" required>
+                            <button type="submit" class="btn-primary">Add</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Marks Record</h3>
+                    <div class="table-container">
+                        <table class="marks-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Subject</th>
+                                    <th>Marks</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="empty">No records found</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Page -->
+            <div class="page" id="profile-page">
+                <div class="profile-card">
+                    <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
+                    <div class="profile-info">
+                        <h2 id="profileName">Teacher Name</h2>
+                        <p id="profileEmail">teacher@example.com</p>
+                        <span class="role-badge">Teacher</span>
+                    </div>
+                    <button class="btn-primary" id="editProfileBtn">
+                        <i class="fas fa-edit"></i>
+                        Edit Profile
+                    </button>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>Personal Information</h3>
+                        <div class="info-list">
+                            <div class="info-item">
+                                <span>Teacher ID:</span>
+                                <span id="profileUserId">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span>Mobile:</span>
+                                <span id="profileMobile">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span>City:</span>
+                                <span id="profileCity">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span>State:</span>
+                                <span id="profileState">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    </div>
+    </main>
     </div>
 
     <!-- Modals -->
@@ -338,7 +364,8 @@
                     <input type="file" name="csv" accept=".csv" required>
                     <div class="csv-help">
                         <p><strong>CSV Format:</strong> userId,name,email,password,age,class,city,state,country</p>
-                        <p><strong>Sample:</strong> s001,John Doe,john@example.com,password123,20,BCA,New York,NY,USA</p>
+                        <p><strong>Sample:</strong> s001,John Doe,john@example.com,password123,20,BCA,New York,NY,USA
+                        </p>
                         <a href="/uploads/csv/SampleStudentCSV.csv" download class="download-sample">
                             <i class="fas fa-download"></i> Download Sample CSV
                         </a>
@@ -363,7 +390,8 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Subject</label>
-                        <input type="text" name="subject" placeholder="Enter subject (e.g., Mathematics, Science)" required>
+                        <input type="text" name="subject" placeholder="Enter subject (e.g., Mathematics, Science)"
+                            required>
                     </div>
                     <div class="form-group">
                         <label>Class</label>
@@ -409,7 +437,8 @@
                     <input type="email" id="editEmail" name="email" placeholder="Email" required>
                 </div>
                 <div class="form-row">
-                    <input type="tel" id="editMobileNumber" name="mobileNumber" placeholder="Mobile Number" maxlength="10">
+                    <input type="tel" id="editMobileNumber" name="mobileNumber" placeholder="Mobile Number"
+                        maxlength="10">
                     <input type="text" id="editCity" name="city" placeholder="City">
                 </div>
                 <div class="form-row">
@@ -420,11 +449,173 @@
                     <label>Profile Image (Optional)</label>
                     <input type="file" name="image" accept="image/*">
                     <div id="currentProfileImageContainer" style="margin-top: 10px;">
-                        <img id="currentProfileImage" src="" alt="Current Profile" style="max-width: 100px; max-height: 100px; border-radius: 50%;">
+                        <img id="currentProfileImage" src="" alt="Current Profile"
+                            style="max-width: 100px; max-height: 100px; border-radius: 50%;">
                     </div>
                 </div>
                 <button type="submit" class="btn-primary">Update Profile</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Add Holiday Modal -->
+    <div id="addHolidayModal" class="modal holiday-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-calendar-times"></i> Set Holidays</h3>
+                <span class="close-modal" onclick="dashboard.hideHolidayModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Set Holidays Card -->
+                <div class="set-holidays-card" id="setHolidaysCard">
+                    <div class="card-header">
+                        <h4><i class="fas fa-calendar-alt"></i> Set Holidays</h4>
+                    </div>
+                    <form id="setHolidaysForm">
+                        <div class="form-row">
+                            <label for="startDate">Start Date</label>
+                            <input type="date" id="startDate" name="startDate" required>
+                        </div>
+                        <div class="form-row">
+                            <label for="endDate">End Date</label>
+                            <input type="date" id="endDate" name="endDate" required>
+                        </div>
+                        <div class="form-row">
+                            <label for="holidayReason">Reason</label>
+                            <select id="holidayReason" name="holidayReason" required>
+                                <option value="">Select Reason</option>
+                                <option value="personal">Personal</option>
+                                <option value="public">Public Holiday</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="holidayNote">Note (Optional)</label>
+                            <textarea id="holidayNote" name="holidayNote" rows="3"
+                                placeholder="Add any additional notes..."></textarea>
+                        </div>
+                        <div class="checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="singleDayHolidayCheckbox"
+                                    onchange="dashboard.handleSingleDayHolidayToggle()">
+                                <span class="checkmark"></span>
+                                Add Single-Day Holiday
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="dashboard.hideHolidayModal()">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Holiday
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Single-Day Holiday Card (Initially Hidden) -->
+                <div class="single-day-holiday-card" id="singleDayHolidayCard" style="display: none;">
+                    <div class="card-header">
+                        <h4><i class="fas fa-calendar-day"></i> Single-Day Holiday</h4>
+                        <button type="button" class="btn-secondary" onclick="dashboard.showSetHolidaysCard()">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
+
+                    </div>
+                    <form id="singleDayHolidayForm">
+                        <div class="form-row">
+                            <label for="singleDate">Holiday Date</label>
+                            <input type="date" id="singleDate" name="singleDate" required>
+                        </div>
+                        <div class="form-row">
+                            <label for="singleDayReason">Reason</label>
+                            <select id="singleDayReason" name="singleDayReason" required>
+                                <option value="">Select Reason</option>
+                                <option value="personal">Personal</option>
+                                <option value="public">Public Holiday</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="singleDayNote">Note (Optional)</label>
+                            <textarea id="singleDayNote" name="singleDayNote" rows="3"
+                                placeholder="Add any additional notes..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="dashboard.hideHolidayModal()">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Add Holiday
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Creation Modal -->
+    <div class="modal" id="sessionModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-calendar-alt"></i> Create Session</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="sessionForm">
+                    <div class="form-row">
+                        <label for="sessionTitle">Session Title</label>
+                        <input type="text" id="sessionTitle" name="sessionTitle" required
+                            placeholder="Enter session title">
+                    </div>
+                    <div class="form-row">
+                        <label for="sessionDate">Session Date</label>
+                        <input type="date" id="sessionDate" name="sessionDate" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="sessionDuration">Session Duration (minutes)</label>
+                        <select id="sessionDuration" name="sessionDuration" required>
+                            <option value="30">30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60" selected>60 minutes</option>
+                            <option value="90">90 minutes</option>
+                            <option value="120">120 minutes</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="breakDuration">Break Duration (minutes)</label>
+                        <select id="breakDuration" name="breakDuration" required>
+                            <option value="0" selected>No Break</option>
+                            <option value="5">5 minutes</option>
+                            <option value="10">10 minutes</option>
+                            <option value="15">15 minutes</option>
+                            <option value="20">20 minutes</option>
+                            <option value="30">30 minutes</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="studentSelectionType">Assign to Student</label>
+                        <select id="studentSelectionType" name="studentSelectionType"
+                            onchange="dashboard.handleStudentSelectionChange()">
+                            <option value="all" selected>All Students</option>
+                            <option value="particular">Particular Student</option>
+                        </select>
+                    </div>
+                    <div class="form-row" id="particularStudentRow" style="display: none;">
+                        <label for="studentSelect">Select Student</label>
+                        <select id="studentSelect" name="studentSelect">
+                            <option value="">Select a Student</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="dashboard.hideSessionModal()">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Create Session
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -436,6 +627,49 @@
     <!-- Messages Container -->
     <div class="messages" id="messages"></div>
 
+    <!-- Component Loading Script -->
+    <script>
+        // Global function to clear day slots
+        function clearDaySlot(day) {
+            const startInput = document.querySelector(`input[name="${day}-start"]`);
+            const endInput = document.querySelector(`input[name="${day}-end"]`);
+            if (startInput) startInput.value = '';
+            if (endInput) endInput.value = '';
+        }
+
+        // Global function to clear all day slots
+        function clearAllDaySlots() {
+            const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+            days.forEach(day => {
+                clearDaySlot(day);
+            });
+        }
+
+        // Load components before main script
+        async function loadComponents() {
+            try {
+                // Load sidebar
+                const sidebarResponse = await fetch('/components/sidebar.html');
+                const sidebarHtml = await sidebarResponse.text();
+                document.getElementById('sidebar-container').innerHTML = sidebarHtml;
+
+                // Load header
+                const headerResponse = await fetch('/components/header.html');
+                const headerHtml = await headerResponse.text();
+                document.getElementById('header-container').innerHTML = headerHtml;
+
+                // Trigger a custom event to notify that components are loaded
+                document.dispatchEvent(new CustomEvent('componentsLoaded'));
+            } catch (error) {
+                console.error('Error loading components:', error);
+            }
+        }
+
+        // Load components immediately
+        loadComponents();
+    </script>
+
     <script src="/js/teacherDashboard.js"></script>
 </body>
+
 </html>

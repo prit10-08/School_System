@@ -9,9 +9,7 @@ const router = express.Router();
 router.use(jwtAuth, roleAuth("teacher"));
 
 router.post("/", createQuizValidation, validate, (req, res, next) => {
-    console.log('Quiz creation route hit');
-    console.log('Request body:', req.body);
-    console.log('User:', req.user);
+
     createQuiz(req, res, next);
 });
 router.get("/", getMyQuizzes);

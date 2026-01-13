@@ -2,9 +2,7 @@ const Quiz = require("../models/Quiz");
 
 exports.createQuiz = async (req, res) => {
   try {
-    console.log('=== CREATE QUIZ CONTROLLER HIT ===');
-    console.log('Request body:', req.body);
-    console.log('User from token:', req.user);
+
     
     const { title, subject, questions } = req.body;
 
@@ -16,7 +14,6 @@ exports.createQuiz = async (req, res) => {
       });
     }
 
-    console.log('Creating quiz with data:', { title, subject, questions, teacherId: req.user.id });
 
     const quiz = await Quiz.create({
       title,
@@ -26,7 +23,6 @@ exports.createQuiz = async (req, res) => {
       teacherId: req.user.id
     });
 
-    console.log('Quiz created successfully:', quiz);
 
     res.status(201).json({
       success: true,

@@ -13,9 +13,30 @@ class TeacherDashboard {
             return;
         }
 
-        this.setupEventListeners();
-        this.loadTeacherProfile();
-        this.loadDashboardData();
+        // Wait for components to be loaded before setting up event listeners
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.waitForComponentsAndInit();
+            });
+        } else {
+            this.waitForComponentsAndInit();
+        }
+    }
+
+    waitForComponentsAndInit() {
+        // Check if components are already loaded
+        if (document.querySelector('.nav-item') && document.querySelector('.profile-dropdown')) {
+            this.setupEventListeners();
+            this.loadTeacherProfile();
+            this.loadDashboardData();
+        } else {
+            // Wait for components to load
+            document.addEventListener('componentsLoaded', () => {
+                this.setupEventListeners();
+                this.loadTeacherProfile();
+                this.loadDashboardData();
+            });
+        }
     }
 
     setupEventListeners() {
@@ -62,8 +83,71 @@ class TeacherDashboard {
             this.logout();
         });
 
+        // Holiday functionality
+        document.getElementById('addHolidayBtn')?.addEventListener('click', () => {
+            this.showAddHolidayModal();
+        });
+
+        // Single-Day Holiday checkbox toggle
+        document.getElementById('singleDayHolidayCheckbox')?.addEventListener('change', () => {
+            this.handleSingleDayHolidayToggle();
+        });
+
+        // Back button should close the holiday modal completely
+        document.getElementById("singleHolidayBackBtn")?.addEventListener("click", () => {
+            this.hideHolidayModal();
+        });
+
+        document.getElementById('setHolidaysForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.addSetHoliday();
+        });
+
+        document.getElementById('singleDayHolidayForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.addSingleDayHoliday();
+        });
+
+        // Holiday filter functionality
+        document.getElementById('holidayFilter')?.addEventListener('change', (e) => {
+            this.filterHolidays(e.target.value);
+        });
+
+        // Sessions filter functionality
+        document.getElementById('sessionTypeFilter')?.addEventListener('change', (e) => {
+            this.filterSessions(e.target.value);
+        });
+
+        // Sessions functionality
+        document.getElementById('addSessionBtn')?.addEventListener('click', () => {
+            this.showSessionModal();
+        });
+
+        document.getElementById('sessionForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.createSession(e);
+        });
+
+        // Pagination controls
+        document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+            const currentPage = parseInt(document.getElementById('currentPage').textContent);
+            if (currentPage > 1) {
+                this.loadSessions(currentPage - 1);
+            }
+        });
+
+        document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+            const currentPage = parseInt(document.getElementById('currentPage').textContent);
+            this.loadSessions(currentPage + 1);
+        });
+
         // Modal controls
         this.setupModalControls();
+
+        // Session modal close button
+        document.querySelector('#sessionModal .close-modal')?.addEventListener('click', () => {
+            this.hideSessionModal();
+        });
 
         // Form submissions
         this.setupFormHandlers();
@@ -142,11 +226,13 @@ class TeacherDashboard {
             this.createQuiz(e.target);
         });
 
-        // Availability Form
-        document.getElementById('availabilityForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addAvailability(e.target);
+        // Availability Forms
+        document.getElementById('saveAvailabilityBtn')?.addEventListener('click', () => {
+            this.saveInlineEditedAvailability();
         });
+
+        // Setup time picker functionality for readonly inputs
+        // this.setupTimePickers();
 
         // Marks Form
         document.getElementById('marksForm')?.addEventListener('submit', (e) => {
@@ -179,7 +265,7 @@ class TeacherDashboard {
         // Update header profile
         const headerProfileImage = document.getElementById('headerProfileImage');
         const headerTeacherName = document.getElementById('headerTeacherName');
-        
+
         if (headerProfileImage) {
             headerProfileImage.src = this.teacher.profileImage || '/images/default-avatar.png';
         }
@@ -201,6 +287,7 @@ class TeacherDashboard {
         await Promise.all([
             this.loadStudents(),
             this.loadQuizzes(),
+            this.loadSessions(),
             this.loadAvailability(),
             this.loadStats()
         ]);
@@ -225,7 +312,6 @@ class TeacherDashboard {
             if (response.success) {
                 this.displayQuizzes(response.data);
                 this.updateRecentQuizzes(response.data.slice(0, 5));
-                console.log(`Loaded ${response.data.length} quizzes from database`);
             } else {
                 console.error('Failed to load quizzes:', response.message);
                 this.showMessage('Failed to load quizzes from database', 'error');
@@ -248,12 +334,15 @@ class TeacherDashboard {
 
     async loadAvailability() {
         try {
-            const response = await this.apiCall('/teacher-availability', 'GET');
+            const response = await this.apiCall('/teacher-availability/my-availability', 'GET');
             if (response.success) {
-                this.displayAvailability(response.data);
+                this.displayWeeklyAvailability(response.weeklyAvailability || []);
+            } else {
+                this.showMessage(response.message || 'Failed to load availability', 'error');
             }
         } catch (error) {
             console.error('Error loading availability:', error);
+            this.showMessage('Error loading availability: ' + (error.message || 'Unknown error'), 'error');
         }
     }
 
@@ -333,52 +422,279 @@ class TeacherDashboard {
         `).join('');
     }
 
-    displayAvailability(slots) {
-        const container = document.getElementById('availabilitySlots');
-        if (!container) return;
+displayWeeklyAvailability(weeklyAvailability) {
+    const container = document.getElementById('currentSchedule');
+    if (!container) return;
 
-        if (slots.length === 0) {
-            container.innerHTML = '<p class="empty">No slots added</p>';
+    // Save button hidden by default
+    const saveBtn = document.getElementById('saveAvailabilityBtn');
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    const dayNames = {
+        monday: 'Monday',
+        tuesday: 'Tuesday',
+        wednesday: 'Wednesday',
+        thursday: 'Thursday',
+        friday: 'Friday',
+        saturday: 'Saturday'
+    };
+
+    // Convert backend array to map
+    const availabilityMap = {};
+    if (Array.isArray(weeklyAvailability)) {
+        weeklyAvailability.forEach(slot => {
+            availabilityMap[slot.day] = slot;
+        });
+    }
+
+    // Always build Monday-Saturday
+    const finalAvailability = Object.keys(dayNames).map(day => ({
+        day,
+        startTime: availabilityMap[day]?.startTime || "00:00",
+        endTime: availabilityMap[day]?.endTime || "00:00"
+    }));
+
+    this.currentAvailabilityData = finalAvailability;
+
+    // ✅ Render with EDIT ICON per day
+    container.innerHTML = finalAvailability.map(slot => `
+        <div class="schedule-item" data-day="${slot.day}">
+            <div class="schedule-day">
+                ${dayNames[slot.day]}
+            </div>
+
+            <div class="schedule-time"
+                 data-start="${slot.startTime}"
+                 data-end="${slot.endTime}"
+                 style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+
+                <span class="time-text">
+                    ${this.formatTimeForDisplay(slot.startTime)} - ${this.formatTimeForDisplay(slot.endTime)}
+                </span>
+
+                <button class="btn btn-secondary btn-sm"
+                        onclick="dashboard.enableDayEdit('${slot.day}')"
+                        title="Edit">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+formatTimeForDisplay(time24) {
+    if (!time24 || time24 === "00:00") return "00:00";
+
+    const [hours, minutes] = time24.split(':');
+    const hour = parseInt(hours, 10);
+
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+    return `${displayHour}:${minutes} ${period}`;
+}
+
+enableInlineEdit() {
+    const container = document.getElementById('currentSchedule');
+    if (!container) return;
+
+    const editBtn = document.getElementById('editAvailabilityBtn');
+    const saveBtn = document.getElementById('saveAvailabilityBtn');
+
+    container.querySelectorAll('.schedule-item').forEach(item => {
+        const day = item.dataset.day;
+        const timeDiv = item.querySelector('.schedule-time');
+
+        let startTime = timeDiv.dataset.start || "00:00";
+        let endTime = timeDiv.dataset.end || "00:00";
+
+        if (startTime === "00:00") startTime = "";
+        if (endTime === "00:00") endTime = "";
+
+        timeDiv.innerHTML = `
+            <div class="time-input-group">
+                <input type="time" class="time-picker"
+                       data-day="${day}" data-type="start-time"
+                       value="${startTime}" step="60">
+
+                <span class="time-separator">-</span>
+
+                <input type="time" class="time-picker"
+                       data-day="${day}" data-type="end-time"
+                       value="${endTime}" step="60">
+
+                <button class="btn-clear-time"
+                        onclick="dashboard.clearDayTime('${day}')"
+                        title="Clear time">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+    });
+
+    if (editBtn) editBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'block';
+}
+
+
+saveInlineEditedAvailability() {
+    const updatedAvailability = [];
+
+    document.querySelectorAll(".schedule-item").forEach(item => {
+        const day = item.dataset.day;
+        const timeDiv = item.querySelector(".schedule-time");
+
+        // ✅ If day is in edit mode (inputs exist)
+        const startInput = item.querySelector('[data-type="start-time"]');
+        const endInput = item.querySelector('[data-type="end-time"]');
+
+        let startTime = "";
+        let endTime = "";
+
+        if (startInput && endInput) {
+            // ✅ take from input values
+            startTime = startInput.value || "00:00";
+            endTime = endInput.value || "00:00";
+        } else {
+            // ✅ take from old saved dataset values
+            startTime = timeDiv?.dataset.start || "00:00";
+            endTime = timeDiv?.dataset.end || "00:00";
+        }
+
+        // ✅ if cleared day
+        if (startTime === "00:00" && endTime === "00:00") {
+            updatedAvailability.push({ day, startTime, endTime });
             return;
         }
 
-        container.innerHTML = slots.map(slot => `
-            <div class="availability-item">
-                <p><strong>Date:</strong> ${new Date(slot.date).toLocaleDateString()}</p>
-                <p><strong>Time:</strong> ${slot.startTime} - ${slot.endTime}</p>
-                <button class="btn-delete" onclick="dashboard.deleteAvailability('${slot._id}')">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-        `).join('');
+        // ✅ validate start < end
+        if (startTime < endTime) {
+            updatedAvailability.push({ day, startTime, endTime });
+        } else {
+            this.showMessage(`${day}: Start time must be before end time`, "error");
+        }
+    });
+
+    this.saveWeeklyAvailabilityToBackend(updatedAvailability);
+}
+
+async saveWeeklyAvailabilityToBackend(weeklyAvailability) {
+    try {
+        this.showLoading();
+
+        const response = await this.apiCall(
+            '/teacher-availability/availability',
+            'POST',
+            { weeklyAvailability }
+        );
+
+        if (response.success) {
+            this.showMessage('Weekly availability saved successfully!', 'success');
+            this.currentAvailabilityData = weeklyAvailability;
+            this.exitInlineEdit();
+            await this.loadAvailability();
+        } else {
+            this.showMessage(response.message || 'Failed to save availability', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving weekly availability:', error);
+        this.showMessage('Error saving availability: ' + (error.message || 'Unknown error'), 'error');
+    } finally {
+        this.hideLoading();
+    }
+}
+
+exitInlineEdit() {
+    const editBtn = document.getElementById('editAvailabilityBtn');
+    const saveBtn = document.getElementById('saveAvailabilityBtn');
+
+    if (editBtn) editBtn.style.display = 'block';
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    if (this.currentAvailabilityData) {
+        this.displayWeeklyAvailability(this.currentAvailabilityData);
+    }
+}
+
+enableDayEdit(day) {
+    // Show Save button when teacher edits any day
+    const saveBtn = document.getElementById("saveAvailabilityBtn");
+    if (saveBtn) saveBtn.style.display = "block";
+
+    const item = document.querySelector(`.schedule-item[data-day="${day}"]`);
+    if (!item) return;
+
+    const timeDiv = item.querySelector(".schedule-time");
+    if (!timeDiv) return;
+
+    let startTime = timeDiv.dataset.start || "00:00";
+    let endTime = timeDiv.dataset.end || "00:00";
+
+    // If not set, show blank inputs (avoid 12:00 AM view)
+    if (startTime === "00:00") startTime = "";
+    if (endTime === "00:00") endTime = "";
+
+    timeDiv.innerHTML = `
+        <div class="time-input-group" style="display:flex; align-items:center; gap:10px;">
+            <input type="time" class="time-picker"
+                   data-day="${day}" data-type="start-time"
+                   value="${startTime}" step="60">
+
+            <span>-</span>
+
+            <input type="time" class="time-picker"
+                   data-day="${day}" data-type="end-time"
+                   value="${endTime}" step="60">
+
+            <button class="btn btn-danger btn-sm"
+                    onclick="dashboard.clearDayTime('${day}')"
+                    title="Clear time">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+}
+
+clearDayTime(day) {
+    const startInput = document.querySelector(`input[data-type="start-time"][data-day="${day}"]`);
+    const endInput = document.querySelector(`input[data-type="end-time"][data-day="${day}"]`);
+
+    if (startInput) startInput.value = "";
+    if (endInput) endInput.value = "";
+}
+
+
+
+    clearAllDaySlots() {
+        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        days.forEach(day => {
+            this.clearDayTime(day);
+        });
     }
 
     updateStats(stats) {
         document.getElementById('totalStudents').textContent = stats.totalStudents || 0;
         document.getElementById('totalQuizzes').textContent = stats.totalQuizzes || 0;
-        document.getElementById('availableSlots').textContent = stats.availableSlots || 0;
-        document.getElementById('avgPerformance').textContent = `${stats.avgPerformance || 0}%`;
+        document.getElementById('totalSessions').textContent = stats.totalSessions || 0;
     }
 
     updateRecentStudents(students) {
         const container = document.getElementById('recentStudents');
         if (!container) return;
-
         if (students.length === 0) {
             container.innerHTML = '<p class="empty">No students added yet</p>';
             return;
         }
-
         container.innerHTML = students.map(student => `
-            <div class="student-item">
-                <img src="${student.profileImage || '/images/default-avatar.png'}" alt="${student.name}">
-                <div class="student-info">
-                    <h4>${student.name}</h4>
-                    <p>${student.email}</p>
-                </div>
-                ${student.class ? `<span class="student-class">${student.class}</span>` : ''}
+        <div class="student-item">
+            <img src="${student.profileImage || '/images/default-avatar.png'}" alt="${student.name}">
+            <div class="student-info">
+                <h4>${student.name}</h4>
+                <p>${student.email}</p>
             </div>
-        `).join('');
+            ${student.class ? `<span class="student-class">${student.class}</span>` : ''}
+        </div>
+    `).join('');
     }
 
     updateRecentQuizzes(quizzes) {
@@ -391,12 +707,30 @@ class TeacherDashboard {
         }
 
         container.innerHTML = quizzes.map(quiz => `
-            <div class="quiz-item-small">
-                <h4>${quiz.title}</h4>
-                <p>${quiz.subject} • ${quiz.questions ? quiz.questions.length : 0} questions • ${quiz.totalMarks || quiz.questions ? quiz.questions.length : 0} marks</p>
-                <small>Created: ${new Date(quiz.createdAt).toLocaleDateString()}</small>
-            </div>
-        `).join('');
+        <div class="quiz-item-small">
+            <h4>${quiz.title}</h4>
+            <p>${quiz.subject} • ${quiz.questions ? quiz.questions.length : 0} questions • ${quiz.totalMarks || quiz.questions ? quiz.questions.length : 0} marks</p>
+            <small>Created: ${new Date(quiz.createdAt).toLocaleDateString()}</small>
+        </div>
+    `).join('');
+    }
+
+    updateRecentSessions(sessions) {
+        const container = document.getElementById('recentSessions');
+        if (!container) return;
+
+        if (sessions.length === 0) {
+            container.innerHTML = '<p class="empty">No sessions created yet</p>';
+            return;
+        }
+
+        container.innerHTML = sessions.map(session => `
+        <div class="session-item-small">
+            <h4>${session.title}</h4>
+            <p>${session.date} • ${session.day} • ${session.sessionDuration} min</p>
+            <small>${session.totalSlots || 0} slots available</small>
+        </div>
+    `).join('');
     }
 
     async addStudent(form) {
@@ -406,7 +740,7 @@ class TeacherDashboard {
         try {
             this.showLoading();
             const response = await this.apiCall('/teachers/students', 'POST', formData);
-            
+
             if (response.success) {
                 this.showMessage('Student added successfully', 'success');
                 this.hideModal('addStudentModal');
@@ -431,7 +765,7 @@ class TeacherDashboard {
         try {
             this.showLoading();
             const response = await this.apiCall('/teachers/students/upload-csv', 'POST', formData);
-            
+
             if (response.success || response.message) {
                 // Show detailed results
                 let message = response.message || 'CSV upload completed';
@@ -462,13 +796,10 @@ class TeacherDashboard {
 
     async createQuiz(form) {
         const formData = new FormData(form);
-        
+
         // Collect questions properly
         const questions = [];
         const questionElements = form.querySelectorAll('.question-item');
-        
-        console.log('Found question elements:', questionElements.length);
-        
         questionElements.forEach((questionEl, index) => {
             const questionText = questionEl.querySelector(`input[name="questions[]"]`).value;
             const options = [
@@ -478,9 +809,9 @@ class TeacherDashboard {
                 questionEl.querySelector(`input[name="options${index + 1}[]"]:nth-child(5)`).value
             ];
             const correctOption = questionEl.querySelector(`select[name="answers[]"]`).value;
-            
+
             console.log(`Question ${index + 1}:`, { questionText, options, correctOption });
-            
+
             questions.push({
                 question: questionText,
                 options: options,
@@ -495,17 +826,13 @@ class TeacherDashboard {
             questions: questions
         };
 
-        console.log('=== SENDING QUIZ DATA ===');
-        console.log('Quiz data:', quizData);
-        console.log('Teacher ID:', this.teacher._id);
-
         try {
             this.showLoading();
             const response = await this.apiCall('/quizzes', 'POST', quizData);
-            
+
             console.log('=== SERVER RESPONSE ===');
             console.log('Response:', response);
-            
+
             if (response.success || response.quiz) {
                 this.showMessage('Quiz created successfully', 'success');
                 this.hideModal('createQuizModal');
@@ -523,34 +850,44 @@ class TeacherDashboard {
         }
     }
 
-    async addAvailability(form) {
-        const formData = new FormData(form);
-        const availabilityData = {
-            teacherId: this.teacher._id,
-            date: formData.get('availabilityDate'),
-            startTime: formData.get('startTime'),
-            endTime: formData.get('endTime')
-        };
+    showInlineError(input, message) {
+        if (!input) return;
 
-        try {
-            this.showLoading();
-            const response = await this.apiCall('/teacher-availability', 'POST', availabilityData);
-            
-            if (response.success) {
-                this.showMessage('Availability added successfully', 'success');
-                form.reset();
-                await this.loadAvailability();
-                await this.loadStats();
-            } else {
-                this.showMessage(response.message || 'Failed to add availability', 'error');
-            }
-        } catch (error) {
-            console.error('Error adding availability:', error);
-            this.showMessage('Error adding availability', 'error');
-        } finally {
-            this.hideLoading();
+        input.style.borderColor = '#ef4444';
+        input.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.1)';
+
+        // Remove existing error message if any
+        const existingError = input.parentNode.querySelector('.error-message');
+        if (existingError) {
+            existingError.remove();
         }
+
+        // Add new error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        errorDiv.style.cssText = `
+        color: #ef4444;
+        font-size: 12px;
+        margin-top: 4px;
+        font-weight: 500;
+    `;
+        input.parentNode.appendChild(errorDiv);
     }
+
+    clearValidationErrors() {
+        // Clear all error styles
+        document.querySelectorAll('.availability-card input[type="time"]').forEach(input => {
+            input.style.borderColor = '';
+            input.style.boxShadow = '';
+        });
+
+        // Remove all error messages
+        document.querySelectorAll('.error-message').forEach(error => {
+            error.remove();
+        });
+    }
+
 
     async addMarks(form) {
         const formData = new FormData(form);
@@ -564,7 +901,7 @@ class TeacherDashboard {
         try {
             this.showLoading();
             const response = await this.apiCall('/marks', 'POST', marksData);
-            
+
             if (response.success) {
                 this.showMessage('Marks added successfully', 'success');
                 form.reset();
@@ -583,7 +920,7 @@ class TeacherDashboard {
     addQuizQuestion() {
         const container = document.getElementById('questionsContainer');
         const questionCount = container.querySelectorAll('.question-item').length + 1;
-        
+
         const questionItem = document.createElement('div');
         questionItem.className = 'question-item';
         questionItem.innerHTML = `
@@ -600,7 +937,7 @@ class TeacherDashboard {
             </select>
             <button type="button" class="btn-remove" onclick="this.parentElement.remove()">Remove</button>
         `;
-        
+
         container.appendChild(questionItem);
     }
 
@@ -624,6 +961,10 @@ class TeacherDashboard {
             this.loadQuizzes();
         } else if (pageName === 'availability') {
             this.loadAvailability();
+        } else if (pageName === 'holidays') {
+            this.loadHolidays();
+        } else if (pageName === 'sessions') {
+            this.loadSessions();
         }
     }
 
@@ -651,9 +992,9 @@ class TeacherDashboard {
             <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
             <span>${text}</span>
         `;
-        
+
         container.appendChild(message);
-        
+
         setTimeout(() => {
             message.remove();
         }, 5000);
@@ -680,21 +1021,19 @@ class TeacherDashboard {
 
         try {
             const response = await fetch(`${this.apiBaseUrl}${endpoint}`, config);
-            console.log(`Response status: ${response.status}`);
-            
+
             // Handle network errors or server not responding
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('HTTP Error:', response.status, errorText);
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             const result = await response.json();
-            console.log('Response data:', result);
             return result;
         } catch (error) {
             console.error('API call failed:', error);
-            
+
             // Provide more specific error messages
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 throw new Error('Network error: Unable to connect to server. Please check if the server is running.');
@@ -717,7 +1056,7 @@ class TeacherDashboard {
         try {
             this.showLoading();
             const response = await this.apiCall(`/teachers/students/${studentId}`, 'DELETE');
-            
+
             if (response.success) {
                 this.showMessage('Student deleted successfully', 'success');
                 await this.loadStudents();
@@ -736,7 +1075,7 @@ class TeacherDashboard {
     async editStudent(studentId) {
         try {
             const response = await this.apiCall(`/teachers/students/${studentId}`, 'GET');
-            
+
             if (response.success) {
                 const student = response.data;
                 this.showEditStudentModal(student);
@@ -779,7 +1118,7 @@ class TeacherDashboard {
         // Add real-time validation and auto-save functionality
         const form = document.getElementById('editStudentForm');
         const inputs = form.querySelectorAll('input, select');
-        
+
         // Add input event listeners for real-time validation
         inputs.forEach(input => {
             input.addEventListener('input', () => {
@@ -814,9 +1153,8 @@ class TeacherDashboard {
 
             // Check if data changed
             const hasChanges = Object.keys(currentData).some(key => currentData[key] !== originalData[key]);
-            
+
             if (hasChanges) {
-                console.log('Auto-saving changes:', currentData);
                 this.autoSaveStudentChanges(student._id || student.userId, currentData);
             }
         }, 30000); // 30 seconds
@@ -839,7 +1177,7 @@ class TeacherDashboard {
     validateEditFormInput(input) {
         const value = input.value.trim();
         const isValid = input.checkValidity();
-        
+
         if (isValid) {
             input.style.borderColor = '#28a745';
             input.classList.remove('error');
@@ -852,9 +1190,8 @@ class TeacherDashboard {
     async autoSaveStudentChanges(studentId, data) {
         try {
             const response = await this.apiCall(`/teachers/students/${studentId}`, 'PUT', data);
-            
+
             if (response.success) {
-                console.log('Auto-save successful');
                 this.showMessage('Student updated automatically', 'success');
             } else {
                 console.error('Auto-save failed:', response);
@@ -958,100 +1295,100 @@ class TeacherDashboard {
         document.getElementById('editStudentModal').addEventListener('click', (e) => {
             if (e.target.id === 'editStudentModal') {
                 this.hideModal('editStudentModal');
-        }
-    });
-}
-
-async updateStudent(form) {
-    const formData = new FormData(form);
-    const studentId = formData.get('id');
-
-    try {
-        this.showLoading();
-        const response = await this.apiCall(`/teachers/students/${studentId}`, 'PUT', formData);
-        
-        if (response.success) {
-            this.showMessage('Student updated successfully', 'success');
-            this.hideModal('editStudentModal');
-            await this.loadStudents();
-        } else {
-            this.showMessage(`Update failed: ${response.message || 'Unknown error'}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error updating student:', error);
-        this.showMessage('Error updating student', 'error');
-    } finally {
-        this.hideLoading();
-    }
-}
-
-async deleteQuiz(quizId) {
-    if (!confirm('Are you sure you want to delete this quiz?')) return;
-
-    try {
-        this.showLoading();
-        const response = await this.apiCall(`/quizzes/${quizId}`, 'DELETE');
-        
-        if (response.success || response.message) {
-            this.showMessage('Quiz deleted successfully', 'success');
-            await this.loadQuizzes();
-            await this.loadStats();
-        } else {
-            this.showMessage(response.message || 'Failed to delete quiz', 'error');
-        }
-    } catch (error) {
-        console.error('Error deleting quiz:', error);
-        this.showMessage('Error deleting quiz', 'error');
-    } finally {
-        this.hideLoading();
-    }
-}
-
-async editQuiz(quizId) {
-    try {
-        this.showLoading();
-        const response = await this.apiCall(`/quizzes/${quizId}`, 'GET');
-        
-        if (response.success || response._id) {
-            this.showEditQuizModal(response.data || response);
-        } else {
-            this.showMessage(response.message || 'Failed to load quiz', 'error');
-        }
-    } catch (error) {
-        console.error('Error loading quiz:', error);
-        this.showMessage('Error loading quiz', 'error');
-    } finally {
-        this.hideLoading();
-    }
-}
-
-showEditQuizModal(quiz) {
-    const modal = document.getElementById('editQuizModal');
-    if (!modal) {
-        this.createEditQuizModal();
-        this.showEditQuizModal(quiz);
-        return;
+            }
+        });
     }
 
-    // Fill form with quiz data
-    document.getElementById('editQuizId').value = quiz._id;
-    document.getElementById('editQuizTitle').value = quiz.title;
-    document.getElementById('editQuizSubject').value = quiz.subject;
+    async updateStudent(form) {
+        const formData = new FormData(form);
+        const studentId = formData.get('id');
 
-    // Clear existing questions
-    const questionsContainer = document.getElementById('editQuestionsContainer');
-    questionsContainer.innerHTML = '<h4>Questions</h4>';
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/teachers/students/${studentId}`, 'PUT', formData);
 
-    // Add existing questions
-    quiz.questions.forEach((question, index) => {
-        this.addEditQuizQuestion(question, index + 1);
-    });
+            if (response.success) {
+                this.showMessage('Student updated successfully', 'success');
+                this.hideModal('editStudentModal');
+                await this.loadStudents();
+            } else {
+                this.showMessage(`Update failed: ${response.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error updating student:', error);
+            this.showMessage('Error updating student', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
 
-    this.showModal('editQuizModal');
-}
+    async deleteQuiz(quizId) {
+        if (!confirm('Are you sure you want to delete this quiz?')) return;
 
-createEditQuizModal() {
-    const modalHtml = `
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'DELETE');
+
+            if (response.success || response.message) {
+                this.showMessage('Quiz deleted successfully', 'success');
+                await this.loadQuizzes();
+                await this.loadStats();
+            } else {
+                this.showMessage(response.message || 'Failed to delete quiz', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting quiz:', error);
+            this.showMessage('Error deleting quiz', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async editQuiz(quizId) {
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'GET');
+
+            if (response.success || response._id) {
+                this.showEditQuizModal(response.data || response);
+            } else {
+                this.showMessage(response.message || 'Failed to load quiz', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading quiz:', error);
+            this.showMessage('Error loading quiz', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    showEditQuizModal(quiz) {
+        const modal = document.getElementById('editQuizModal');
+        if (!modal) {
+            this.createEditQuizModal();
+            this.showEditQuizModal(quiz);
+            return;
+        }
+
+        // Fill form with quiz data
+        document.getElementById('editQuizId').value = quiz._id;
+        document.getElementById('editQuizTitle').value = quiz.title;
+        document.getElementById('editQuizSubject').value = quiz.subject;
+
+        // Clear existing questions
+        const questionsContainer = document.getElementById('editQuestionsContainer');
+        questionsContainer.innerHTML = '<h4>Questions</h4>';
+
+        // Add existing questions
+        quiz.questions.forEach((question, index) => {
+            this.addEditQuizQuestion(question, index + 1);
+        });
+
+        this.showModal('editQuizModal');
+    }
+
+    createEditQuizModal() {
+        const modalHtml = `
         <div class="modal" id="editQuizModal">
             <div class="modal-content">
                 <div class="modal-header">
@@ -1077,30 +1414,30 @@ createEditQuizModal() {
             </div>
         </div>
     `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-    // Add event listeners
-    document.getElementById('closeEditQuizModal').addEventListener('click', () => {
-        this.hideModal('editQuizModal');
-    });
+        // Add event listeners
+        document.getElementById('closeEditQuizModal').addEventListener('click', () => {
+            this.hideModal('editQuizModal');
+        });
 
-    document.getElementById('editQuizForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.updateQuiz(e.target);
-    });
+        document.getElementById('editQuizForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.updateQuiz(e.target);
+        });
 
-    document.getElementById('addEditQuestionBtn').addEventListener('click', () => {
-        this.addEditQuizQuestion();
-    });
-}
+        document.getElementById('addEditQuestionBtn').addEventListener('click', () => {
+            this.addEditQuizQuestion();
+        });
+    }
 
-addEditQuizQuestion(existingQuestion = null, questionNumber = null) {
-    const container = document.getElementById('editQuestionsContainer');
-    const questionCount = questionNumber || container.querySelectorAll('.question-item').length + 1;
-    
-    const questionItem = document.createElement('div');
-    questionItem.className = 'question-item';
-    questionItem.innerHTML = `
+    addEditQuizQuestion(existingQuestion = null, questionNumber = null) {
+        const container = document.getElementById('editQuestionsContainer');
+        const questionCount = questionNumber || container.querySelectorAll('.question-item').length + 1;
+
+        const questionItem = document.createElement('div');
+        questionItem.className = 'question-item';
+        questionItem.innerHTML = `
         <input type="text" name="questions[]" placeholder="Question ${questionCount}" value="${existingQuestion?.question || ''}" required>
         <input type="text" name="options${questionCount}[]" placeholder="Option A" value="${existingQuestion?.options?.[0] || ''}" required>
         <input type="text" name="options${questionCount}[]" placeholder="Option B" value="${existingQuestion?.options?.[1] || ''}" required>
@@ -1114,57 +1451,57 @@ addEditQuizQuestion(existingQuestion = null, questionNumber = null) {
         </select>
         <button type="button" class="btn-remove" onclick="this.parentElement.remove()">Remove</button>
     `;
-    
-    container.appendChild(questionItem);
-}
 
-async updateQuiz(form) {
-    const formData = new FormData(form);
-    const quizId = formData.get('id');
-    
-    const quizData = {
-        title: formData.get('title'),
-        subject: formData.get('subject'),
-        questions: []
-    };
-
-    // Collect questions
-    const questions = formData.getAll('questions[]');
-    const answers = formData.getAll('answers[]');
-    
-    questions.forEach((question, index) => {
-        const options = formData.getAll(`options${index + 1}[]`);
-        quizData.questions.push({
-            question,
-            options,
-            correctOption: ['a', 'b', 'c', 'd'][parseInt(answers[index])]
-        });
-    });
-
-    try {
-        this.showLoading();
-        const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', quizData);
-        
-        if (response.success || response.quiz) {
-            this.showMessage('Quiz updated successfully', 'success');
-            this.hideModal('editQuizModal');
-            await this.loadQuizzes();
-        } else {
-            this.showMessage(response.message || 'Failed to update quiz', 'error');
-        }
-    } catch (error) {
-        console.error('Error updating quiz:', error);
-        this.showMessage('Error updating quiz', 'error');
-    } finally {
-        this.hideLoading();
+        container.appendChild(questionItem);
     }
-}
 
-showUpdateStudentSelection() {
+    async updateQuiz(form) {
+        const formData = new FormData(form);
+        const quizId = formData.get('id');
+
+        const quizData = {
+            title: formData.get('title'),
+            subject: formData.get('subject'),
+            questions: []
+        };
+
+        // Collect questions
+        const questions = formData.getAll('questions[]');
+        const answers = formData.getAll('answers[]');
+
+        questions.forEach((question, index) => {
+            const options = formData.getAll(`options${index + 1}[]`);
+            quizData.questions.push({
+                question,
+                options,
+                correctOption: ['a', 'b', 'c', 'd'][parseInt(answers[index])]
+            });
+        });
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', quizData);
+
+            if (response.success || response.quiz) {
+                this.showMessage('Quiz updated successfully', 'success');
+                this.hideModal('editQuizModal');
+                await this.loadQuizzes();
+            } else {
+                this.showMessage(response.message || 'Failed to update quiz', 'error');
+            }
+        } catch (error) {
+            console.error('Error updating quiz:', error);
+            this.showMessage('Error updating quiz', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    showUpdateStudentSelection() {
         // Get all students to populate selection dropdown
         this.loadStudents().then(() => {
             const students = this.currentStudents || [];
-            
+
             if (students.length === 0) {
                 this.showMessage('No students available to update', 'error');
                 return;
@@ -1182,9 +1519,9 @@ showUpdateStudentSelection() {
                             <label>Select Student:</label>
                             <select id="studentSelect" required>
                                 <option value="">Choose a student...</option>
-                                ${students.map(student => 
-                                    `<option value="${student._id}">${student.name} (${student.userId})</option>`
-                                ).join('')}
+                                ${students.map(student =>
+                `<option value="${student._id}">${student.name} (${student.userId})</option>`
+            ).join('')}
                             </select>
                         </div>
                         <div class="form-actions">
@@ -1208,7 +1545,7 @@ showUpdateStudentSelection() {
 
             document.getElementById('confirmSelectStudent').addEventListener('click', () => {
                 const selectedStudentId = document.getElementById('studentSelect').value;
-                
+
                 if (selectedStudentId) {
                     this.hideModal('selectStudentModal');
                     this.editStudent(selectedStudentId);
@@ -1225,7 +1562,7 @@ showUpdateStudentSelection() {
         try {
             this.showLoading();
             const response = await this.apiCall(`/teacher-availability/${slotId}`, 'DELETE');
-            
+
             if (response.success) {
                 this.showMessage('Availability deleted successfully', 'success');
                 await this.loadAvailability();
@@ -1267,7 +1604,7 @@ showUpdateStudentSelection() {
 
     async updateProfile(form) {
         const formData = new FormData(form);
-        
+
         // Validate mobile number if provided
         const mobileNumber = formData.get('mobileNumber');
         if (mobileNumber && !/^[6-9]\d{9}$/.test(mobileNumber)) {
@@ -1278,14 +1615,14 @@ showUpdateStudentSelection() {
         try {
             this.showLoading();
             const response = await this.apiCall('/teachers/me/profile', 'PUT', formData);
-            
+
             if (response.message || response.teacher) {
                 this.showMessage('Profile updated successfully', 'success');
                 this.hideModal('editProfileModal');
-                
+
                 // Reload teacher profile to update display
                 await this.loadTeacherProfile();
-                
+
                 // Clear form
                 form.reset();
             } else {
@@ -1298,7 +1635,643 @@ showUpdateStudentSelection() {
             this.hideLoading();
         }
     }
+
+    // Holiday Management Methods
+    async showAddHolidayModal() {
+        const modal = document.getElementById('addHolidayModal');
+        if (modal) {
+            modal.classList.add('show');
+            // Set minimum date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('startDate').min = today;
+            document.getElementById('endDate').min = today;
+            document.getElementById('singleDate').min = today;
+            document.getElementById('startDate').value = today;
+            document.getElementById('endDate').value = today;
+            document.getElementById('singleDate').value = today;
+
+            // Show Set Holidays card by default
+            this.showSetHolidaysCard();
+        }
+    }
+
+    hideHolidayModal() {
+        const modal = document.getElementById('addHolidayModal');
+        if (modal) {
+            modal.classList.remove('show');
+            // Reset forms
+            document.getElementById('setHolidaysForm').reset();
+            document.getElementById('singleDayHolidayForm').reset();
+            this.showSetHolidaysCard();
+        }
+    }
+
+    showSetHolidaysCard() {
+        document.getElementById('setHolidaysCard').style.display = 'block';
+        document.getElementById('singleDayHolidayCard').style.display = 'none';
+        // Reset checkbox state
+        document.getElementById('singleDayHolidayCheckbox').checked = false;
+    }
+
+    handleSingleDayHolidayToggle() {
+        const checkbox = document.getElementById('singleDayHolidayCheckbox');
+
+        if (checkbox.checked) {
+            // Redirect to single-day holiday card
+            this.showSingleDayHolidayCard();
+        } else {
+            // Show set holidays card
+            this.showSetHolidaysCard();
+        }
+    }
+
+    showSingleDayHolidayCard() {
+        document.getElementById('setHolidaysCard').style.display = 'none';
+        document.getElementById('singleDayHolidayCard').style.display = 'block';
+    }
+
+    async addSetHoliday() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const reason = document.getElementById('holidayReason').value;
+        const note = document.getElementById('holidayNote').value;
+
+        if (!startDate || !endDate || !reason) {
+            this.showMessage('Please fill in all required fields', 'error');
+            return;
+        }
+
+        if (new Date(startDate) > new Date(endDate)) {
+            this.showMessage('End date must be after start date', 'error');
+            return;
+        }
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall('/teacher-availability/holidays', 'POST', {
+                startDate,
+                endDate,
+                reason,
+                note: note || ''
+            });
+
+            if (response.success) {
+                this.showMessage('Holiday added successfully! 🎉', 'success');
+                this.hideHolidayModal();
+                this.loadHolidays();
+            } else {
+                this.showMessage(response.message || 'Failed to add holiday', 'error');
+            }
+        } catch (error) {
+            console.error('Error adding holiday:', error);
+            this.showMessage('Error adding holiday: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async addSingleDayHoliday() {
+        const date = document.getElementById('singleDate').value;
+        const reason = document.getElementById('singleDayReason').value;
+        const note = document.getElementById('singleDayNote').value;
+
+        if (!date || !reason) {
+            this.showMessage('Please fill in all required fields', 'error');
+            return;
+        }
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall('/teacher-availability/holidays', 'POST', {
+                startDate: date,
+                endDate: date, // Same date for single day
+                reason,
+                note: note || ''
+            });
+
+            if (response.success) {
+                this.showMessage('Single-day holiday added successfully! 🎉', 'success');
+                this.hideHolidayModal();
+                this.loadHolidays();
+            } else {
+                this.showMessage(response.message || 'Failed to add holiday', 'error');
+            }
+        } catch (error) {
+            console.error('Error adding holiday:', error);
+            this.showMessage('Error adding holiday: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async loadHolidays() {
+        try {
+            const response = await this.apiCall('/teacher-availability/holidays', 'GET');
+
+            if (response.success && response.holidays) {
+                this.allHolidays = response.holidays;
+                this.displayHolidays(response.holidays);
+            } else {
+                this.allHolidays = [];
+                this.displayHolidays([]);
+            }
+        } catch (error) {
+            console.error('Error loading holidays:', error);
+            this.allHolidays = [];
+            this.displayHolidays([]);
+        }
+    }
+
+    displayHolidays(holidays) {
+        const container = document.getElementById('holidaysList');
+        if (!container) return;
+
+        if (holidays.length === 0) {
+            container.innerHTML = `
+                <div class="holidays-empty">
+                    <i class="fas fa-calendar-times"></i>
+                    <p>No holidays added yet</p>
+                    <small>Click "Add Holiday" to create a new holiday</small>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = holidays.map(holiday => {
+            const isPublic = holiday.reason === 'public' || holiday.reason === 'Public Holiday';
+            const typeClass = isPublic ? 'public' : 'personal';
+            const typeText = isPublic ? 'PUBLIC' : 'PERSONAL';
+
+            return `
+                <div class="holiday-card" data-holiday-id="${holiday._id}" data-type="${typeClass}">
+                    <div class="holiday-header">
+                        <span class="holiday-type ${typeClass}">${typeText}</span>
+                        <button class="delete-holiday-btn" onclick="dashboard.deleteHoliday('${holiday._id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="holiday-content">
+                        <div class="holiday-date">
+                            <i class="fas fa-calendar-alt"></i>
+                            ${new Date(holiday.startDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            })}
+                            ${holiday.startDate !== holiday.endDate ? ' - ' + new Date(holiday.endDate).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            }) : ''}
+                        </div>
+                        <div class="holiday-description">
+                            <i class="fas fa-info-circle"></i>
+                            ${holiday.note || holiday.reason}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    filterHolidays(filterType) {
+        if (!this.allHolidays) {
+            return;
+        }
+
+        let filteredHolidays;
+        if (filterType === 'all') {
+            filteredHolidays = this.allHolidays;
+        } else {
+            filteredHolidays = this.allHolidays.filter(holiday => {
+                const isPublic = holiday.reason === 'public' || holiday.reason === 'Public Holiday';
+                const holidayType = isPublic ? 'public' : 'personal';
+                return holidayType === filterType;
+            });
+        }
+
+        this.displayHolidays(filteredHolidays);
+    }
+
+    async deleteHoliday(holidayId) {
+        if (!confirm('Are you sure you want to delete this holiday?')) return;
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/teacher-availability/holidays/${holidayId}`, 'DELETE');
+
+            if (response.success) {
+                this.showMessage('Holiday deleted successfully', 'success');
+                this.loadHolidays();
+            } else {
+                this.showMessage(response.message || 'Failed to delete holiday', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting holiday:', error);
+            this.showMessage('Error deleting holiday: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // Sessions functionality
+    async loadSessions(page = 1, filters = {}) {
+        try {
+            this.showLoading();
+
+            const queryParams = new URLSearchParams({
+                page: page,
+                limit: 10,
+                ...filters
+            });
+
+            const response = await this.apiCall(`/sessions/teacher?${queryParams}`, 'GET');
+
+            if (response.success) {
+                this.allSessions = response.sessions;
+                this.displaySessions(response.sessions, response.pagination);
+                
+                // Update recent sessions for dashboard (only first 5)
+                this.updateRecentSessions(response.sessions.slice(0, 5));
+            } else {
+                this.showMessage(response.message || 'Failed to load sessions', 'error');
+                this.displaySessions([], { totalSessions: 0, currentPage: 1, totalPages: 0 });
+            }
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            this.showMessage('Error loading sessions: ' + (error.message || 'Unknown error'), 'error');
+            this.displaySessions([], { totalSessions: 0, currentPage: 1, totalPages: 0 });
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displaySessions(sessions, pagination) {
+        const container = document.getElementById('sessionsList');
+        const paginationContainer = document.getElementById('sessionsPagination');
+
+        if (!sessions || sessions.length === 0) {
+            container.innerHTML = `
+                <div class="sessions-empty">
+                    <i class="fas fa-calendar-alt"></i>
+                    <p>No sessions created yet</p>
+                    <small>Click "Create Session" to create a new session</small>
+                </div>
+            `;
+            paginationContainer.style.display = 'none';
+            return;
+        }
+
+        container.innerHTML = sessions.map(session => {
+            const isPersonal = session.allowedStudent !== null;
+            const typeClass = isPersonal ? 'personal' : 'common';
+            const typeText = isPersonal ? 'PERSONAL' : 'COMMON';
+
+            // Debug logging to check slots data
+            // Use slots array from backend response (contains generated slots)
+            const slotsCount = session.slots ? session.slots.length : (session.totalSlots || 0);
+            const hasSlots = session.slots && session.slots.length > 0;
+
+            return `
+                <div class="session-card" data-session-id="${session.sessionId}">
+                    <div class="session-header">
+                        <h3 class="session-title">${session.title}</h3>
+                        <span class="session-type ${typeClass}">${typeText}</span>
+                    </div>
+                    <div class="session-content">
+                        
+                        <div class="session-info">
+                            <i class="fas fa-calendar"></i>
+                            <span>${session.date} (${session.day})</span>
+                        </div>
+                        <div class="session-info">
+                            <i class="fas fa-clock"></i>
+                            <span>${session.sessionDuration} min session • ${session.breakDuration} min break</span>
+                        </div>
+                        ${isPersonal && session.allowedStudent ? `
+                            <div class="session-info">
+                                <i class="fas fa-user"></i>
+                                <span>Student: ${session.allowedStudent.name}</span>
+                            </div>
+                        ` : ''}
+                        <div class="session-info">
+                            <i class="fas fa-users"></i>
+                            <span>${slotsCount} Available slot${slotsCount !== 1 ? 's' : ''}</span>
+                        </div>
+                        ${hasSlots ? `
+                            <div class="session-slots">
+                                <div class="session-slots-header">Available Slots (${slotsCount})</div>
+                                <div class="slots-grid">
+                                    ${session.slots.map((slot, index) => `
+                                        <div class="slot-item ${slot.isBooked ? 'booked' : 'available'}">
+                                            ${slot.startTime} - ${slot.endTime}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="session-slots">
+                                <div class="session-slots-header">No slots available</div>
+                                <div class="slots-grid">
+                                    <div class="slot-item empty">
+                                        Slots will appear here
+                                    </div>
+                                </div>
+                            </div>
+                        `}
+                        ${session.bookedSlots && session.bookedSlots.length > 0 ? `
+                            <div class="session-slots">
+                                <div class="session-slots-header">Booked Slots (${session.bookedSlots.length})</div>
+                                <div class="slots-grid">
+                                    ${session.bookedSlots.map(slot => `
+                                        <div class="slot-item booked">
+                                            ${slot.startTime} - ${slot.endTime}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Update pagination
+        if (pagination) {
+            this.updateSessionsPagination(pagination);
+            paginationContainer.style.display = 'flex';
+        }
+    }
+
+    updateSessionsPagination(pagination) {
+        const paginationInfo = document.getElementById('paginationInfo');
+        const currentPage = document.getElementById('currentPage');
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+
+        paginationInfo.textContent = `Showing ${pagination.totalSessions} session${pagination.totalSessions !== 1 ? 's' : ''}`;
+        currentPage.textContent = pagination.currentPage;
+
+        return `
+            <div class="session-card" data-session-id="${session.sessionId}">
+                <div class="session-header">
+                    <h3 class="session-title">${session.title}</h3>
+                    <span class="session-type ${typeClass}">${typeText}</span>
+                </div>
+                <div class="session-content">
+                    
+                    <div class="session-info">
+                        <i class="fas fa-calendar"></i>
+                        <span>${session.date} (${session.day})</span>
+                    </div>
+                    <div class="session-info">
+                        <i class="fas fa-clock"></i>
+                        <span>${session.sessionDuration} min session • ${session.breakDuration} min break</span>
+                    </div>
+                    ${isPersonal && session.allowedStudent ? `
+                        <div class="session-info">
+                            <i class="fas fa-user"></i>
+                            <span>Student: ${session.allowedStudent.name}</span>
+                        </div>
+                    ` : ''}
+                    <div class="session-info">
+                        <i class="fas fa-users"></i>
+                        <span>${slotsCount} Available slot${slotsCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    ${session.slots && session.slots.length > 0 ? `
+                        <div class="session-slots">
+                            <div class="session-slots-header">Available Slots (${slotsCount})</div>
+                            <div class="slots-grid">
+                                ${session.slots.map((slot, index) => `
+                                    <div class="slot-item ${slot.isBooked ? 'booked' : 'available'}">
+                                        ${slot.startTime} - ${slot.endTime}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    ${session.bookedSlots && session.bookedSlots.length > 0 ? `
+                        <div class="session-slots">
+                            <div class="session-slots-header">Booked Slots (${session.bookedSlots.length})</div>
+                            <div class="slots-grid">
+                                ${session.bookedSlots.map(slot => `
+                                    <div class="slot-item booked">
+                                        ${slot.startTime} - ${slot.endTime}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    updateSessionsPagination(pagination) {
+        const paginationInfo = document.getElementById('paginationInfo');
+        const currentPage = document.getElementById('currentPage');
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+
+        paginationInfo.textContent = `Showing ${pagination.totalSessions} session${pagination.totalSessions !== 1 ? 's' : ''}`;
+        currentPage.textContent = pagination.currentPage;
+
+        prevBtn.disabled = pagination.currentPage <= 1;
+        nextBtn.disabled = pagination.currentPage >= pagination.totalPages;
+    }
+
+    showSessionModal() {
+        const modal = document.getElementById('sessionModal');
+        const sessionDateInput = document.getElementById('sessionDate');
+        
+        // Set minimum date to today to prevent past date selection
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const minDate = `${yyyy}-${mm}-${dd}`;
+        
+        sessionDateInput.setAttribute('min', minDate);
+        
+        // Use show class for proper centering
+        modal.classList.add('show');
+        this.loadStudentsForSession();
+    }
+
+    hideSessionModal() {
+        const modal = document.getElementById('sessionModal');
+        modal.classList.remove('show');
+    }
+
+    async loadStudentsForSession() {
+        // Check if particular student is selected before loading
+        const selectionType = document.getElementById('studentSelectionType').value;
+        if (selectionType !== 'particular') {
+            return; // Don't load students if not particular student
+        }
+        
+        // Use more specific selector to get the session modal dropdown
+        const studentSelect = document.querySelector('#particularStudentRow #studentSelect');
+        if (!studentSelect) {
+            console.error('Session student select element not found');
+            return;
+        }
+
+        // Show loading state
+        studentSelect.innerHTML = '<option value="">Loading students...</option>';
+
+        try {
+            // Test with same method that works for main students page
+            const response = await this.apiCall('/teachers/students', 'GET');
+
+            if (response && response.success && response.data) {
+    
+                if (response.data.length > 0) {
+                    // Make row visible first with inline style override
+                    const particularStudentRow = document.getElementById('particularStudentRow');
+                    if (particularStudentRow) {
+                        particularStudentRow.style.display = 'block';
+                        particularStudentRow.style.visibility = 'visible';
+                        particularStudentRow.style.opacity = '1';
+                    }
+
+                    // Force student select visibility
+                    studentSelect.style.display = 'block';
+                    studentSelect.style.visibility = 'visible';
+                    studentSelect.style.opacity = '1';
+
+                    // Clear existing options
+                    studentSelect.innerHTML = '';
+
+                    // Add default option
+                    studentSelect.add(new Option('Select a Student', ''));
+
+                    // Add student options
+                    response.data.forEach(student => {
+                        studentSelect.add(new Option(student.name, student._id));
+                    });
+                } else {
+                    studentSelect.innerHTML = '<option value="">No students found</option>';
+                }
+            } else {
+                studentSelect.innerHTML = '<option value="">Error loading students</option>';
+            }
+        } catch (error) {
+            console.error('Error in loadStudentsForSession:', error);
+            studentSelect.innerHTML = '<option value="">Error loading students</option>';
+        }
+    }
+
+    handleStudentSelectionChange() {
+        const selectionType = document.getElementById('studentSelectionType').value;
+        const particularStudentRow = document.getElementById('particularStudentRow');
+
+        if (selectionType === 'particular') {
+            particularStudentRow.style.display = 'block';
+
+            // Add a small delay to ensure DOM is updated
+            setTimeout(() => {
+                this.loadStudentsForSession();
+            }, 100);
+        } else {
+            particularStudentRow.style.display = 'none';
+            document.getElementById('studentSelect').value = '';
+        }
+    }
+
+    async createSession(event) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        const sessionDate = formData.get('sessionDate');
+        const selectionType = formData.get('studentSelectionType');
+
+        // Convert date from YYYY-MM-DD to DD-MM-YYYY format
+        const dateObj = new Date(sessionDate);
+        const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}-${dateObj.getFullYear()}`;
+
+        const sessionData = {
+            title: formData.get('sessionTitle'),
+            date: formattedDate,
+            sessionDuration: parseInt(formData.get('sessionDuration')),
+            breakDuration: parseInt(formData.get('breakDuration')),
+            student_id: selectionType === 'particular' ? formData.get('studentSelect') : undefined
+        };
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall('/sessions/slots', 'POST', sessionData);
+
+            if (response.success) {
+                this.showMessage('Session created successfully', 'success');
+                this.hideSessionModal();
+                
+                // Add the new session directly to the current sessions list
+                if (response.data) {
+                    // Get current sessions
+                    const currentSessions = this.sessions || [];
+                    
+                    // Map response data to match display function expectations
+                    const newSession = {
+                        ...response.data,
+                        sessionId: response.data.sessionId, // Map sessionId to sessionId
+                        allowedStudent: response.data.allowedStudent || null
+                    };
+                    
+                    // Add new session to the beginning of the array
+                    currentSessions.unshift(newSession);
+                    
+                    // Update the sessions data
+                    this.sessions = currentSessions;
+                    
+                    // Immediately display the updated sessions
+                    this.displaySessions(this.sessions);
+                    
+                } else {
+                    // Fallback: reload all sessions
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await this.loadSessions();
+                }
+            } else {
+                this.showMessage(response.message || 'Failed to create session', 'error');
+            }
+        } catch (error) {
+            console.error('Error creating session:', error);
+            this.showMessage('Error creating session: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    filterSessions(type = 'all') {
+        const filters = {};
+        if (type !== 'all') filters.type = type;
+
+        this.loadSessions(1, filters);
+    }
+
+    async deleteSession(sessionId) {
+        if (!confirm('Are you sure you want to delete this session? This will remove all associated slots.')) return;
+
+        try {
+            this.showLoading();
+            const response = await this.apiCall(`/sessions/${sessionId}`, 'DELETE');
+
+            if (response.success) {
+                this.showMessage('Session deleted successfully', 'success');
+                this.loadSessions();
+            } else {
+                this.showMessage(response.message || 'Failed to delete session', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting session:', error);
+            this.showMessage('Error deleting session: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
 }
+
 
 // Initialize dashboard when DOM is loaded
 let dashboard;

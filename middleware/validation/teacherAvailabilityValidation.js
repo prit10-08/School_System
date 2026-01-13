@@ -10,74 +10,93 @@ exports.validateWeeklyAvailability = (req, res, next) => {
     });
   }
 
-  const validDays = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
+  // NOTE: If you only want Monday-Saturday, remove Sunday
+  const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
   weeklyAvailability.forEach((slot, index) => {
     const { day, startTime, endTime } = slot;
 
     if (!validDays.includes(day)) {
       errors.push(`Row ${index + 1}: Invalid day (${day})`);
+      return;
     }
 
+    // Validate startTime format
     try {
       parseTimeToMinutes(startTime);
     } catch (e) {
       errors.push(`Row ${index + 1}: startTime ${e.message}`);
+      return;
     }
 
+    // Validate endTime format
     try {
       parseTimeToMinutes(endTime);
     } catch (e) {
       errors.push(`Row ${index + 1}: endTime ${e.message}`);
+      return;
     }
 
+    // ✅ Allow 00:00 - 00:00 as "Not Set / Cleared Day"
+    if (startTime === "00:00" && endTime === "00:00") {
+      return;
+    }
+
+    // ✅ Normal availability rule: startTime must be before endTime
     try {
       const start = parseTimeToMinutes(startTime);
       const end = parseTimeToMinutes(endTime);
+
       if (start >= end) {
         errors.push(`Row ${index + 1}: startTime must be before endTime`);
       }
     } catch {
+      errors.push(`Row ${index + 1}: Invalid time values`);
     }
   });
 
   if (errors.length > 0) {
     return res.status(400).json({ errors });
   }
+
   next();
 };
 
 
+
 exports.validateHoliday = (req, res, next) => {
-  const { startDate, endDate, reason } = req.body;
-  const errors = [];
+    const { startDate, endDate, reason } = req.body;
+    const errors = [];
 
-  if (!startDate) errors.push("startDate is required");
-  if (!endDate) errors.push("endDate is required");
-  if (!reason) errors.push("reason is required");
+    if (!startDate) errors.push("startDate is required");
+    if (!endDate) errors.push("endDate is required");
+    if (!reason) errors.push("reason is required");
 
-  let parsedStartDate, parsedEndDate;
+    let parsedStartDate, parsedEndDate;
 
-  try {
-    parsedStartDate = parseDDMMYYYY(startDate);
-  } catch (e) {
-    errors.push(e.message);
-  }
+    try {
+        parsedStartDate = new Date(startDate);
+    } catch (e) {
+        errors.push("Invalid startDate format");
+    }
 
-  try {
-    parsedEndDate = parseDDMMYYYY(endDate);
-  } catch (e) {
-    errors.push(e.message);
-  }
+    try {
+        parsedEndDate = new Date(endDate);
+    } catch (e) {
+        errors.push("Invalid endDate format");
+    }
 
-  if (parsedStartDate && parsedEndDate && parsedEndDate < parsedStartDate) {
-    errors.push("endDate cannot be before startDate");
-  }
+    // Validate dates
+    if (parsedStartDate && parsedEndDate && parsedEndDate < parsedStartDate) {
+        errors.push("endDate cannot be before startDate");
+    }
 
-  if (errors.length > 0) {
-    return res.status(400).json({ errors });
-  }
-  req.parsedStartDate = parsedStartDate;
-  req.parsedEndDate = parsedEndDate;
-  next();
+    if (errors.length > 0) {
+        return res.status(400).json({ errors });
+    }
+
+    // Attach parsed dates to request for controller to use
+    req.parsedStartDate = parsedStartDate;
+    req.parsedEndDate = parsedEndDate;
+    next();
 };

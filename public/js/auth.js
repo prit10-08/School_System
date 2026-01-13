@@ -212,15 +212,12 @@ class AuthSystem {
         
         this.showLoading();
         try {
-            console.log('Submitting signup form...');
             const res = await fetch(`${this.apiBaseUrl}/signup`, {
                 method: 'POST',
                 body: formData
             });
             
-            console.log('Response status:', res.status);
             const result = await res.json();
-            console.log('Response data:', result);
             
             if (res.ok) {
                 this.showMessage(result.message || 'Account created! Redirecting to login...', 'success');
