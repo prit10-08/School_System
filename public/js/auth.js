@@ -187,6 +187,8 @@ class AuthSystem {
                     const payload = JSON.parse(atob(result.token.split('.')[1]));
                     if (payload.role === 'teacher') {
                         setTimeout(() => window.location.href = '/teacherDashboard.html', 1500);
+                    } else if (payload.role === 'student') {
+                        setTimeout(() => window.location.href = '/studentDashboard.html', 1500);
                     } else {
                         setTimeout(() => window.location.href = '/index.html', 1500);
                     }

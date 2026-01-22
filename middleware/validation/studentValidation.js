@@ -8,7 +8,8 @@ const studentCreate = [
   body('email').isEmail().withMessage('email must be valid'),
   body('password').isLength({ min: 6 }).withMessage('password min length is 6'),
   body('age').notEmpty().isInt({ min: 1 }).withMessage('age is required and must be positive integer'),
-  body('class').notEmpty().withMessage('class is required for student')
+  body('class').optional().trim(),
+  body('timezone').trim().notEmpty().withMessage('timezone is required')
 ];
 
 const studentUpdate = [
@@ -18,7 +19,8 @@ const studentUpdate = [
   body('class').optional().notEmpty().withMessage('class cannot be empty'),
   body('city').optional().trim(),
   body('state').optional().trim(),
-  body('country').optional().trim()
+  body('country').optional().trim(),
+  body('timezone').optional().trim()
 ];
 
 const studentIdParam = [
@@ -61,7 +63,8 @@ const csvStudentValidators = [
   body("email").isEmail().withMessage("email must be valid"),
   body("password").isLength({ min: 6 }).withMessage("password min length is 6"),
   body("age").notEmpty().isInt({ min: 1 }).withMessage("age is required and must be positive integer"),
-  body("class").notEmpty().withMessage("class is required for student")
+  body("class").optional().trim(),
+  body("timezone").trim().notEmpty().withMessage("timezone is required")
 ];
 
 

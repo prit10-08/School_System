@@ -162,48 +162,43 @@ exports.createSessionSlots = async (req, res) => {
 
 exports.getMySessionSlots = async (req, res) => {
   try {
-    const student = await User.findById(req.user.id);
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
-    }
+    const student = await User.findById(req.user.id).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
-    const studentTimezone = student.timezone || "Asia/Kolkata";
-    const teacher = await User.findById(student.teacherId);
+    const studentTimezone =
+      student.timezone || student[" timezone"] || "Asia/Kolkata";
 
-    if (!teacher) {
-      return res.status(404).json({ message: "Teacher not found" });
-    }
+    const teacher = await User.findById(student.teacherId).lean();
+    if (!teacher) return res.status(404).json({ message: "Teacher not found" });
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const teacherTZ = teacher.timezone || "Asia/Kolkata";
 
     const sessions = await SessionSlot.find({
       teacherId: student.teacherId,
-      $or: [
-        { allowedStudentId: null },
-        { allowedStudentId: student._id }
-      ]
+      $or: [{ allowedStudentId: null }, { allowedStudentId: student._id }]
     })
-      .skip(skip)
-      .limit(limit)
-      .sort({ date: 1 });
+      .sort({ date: 1 })
+      .lean();
 
     const availability = await TeacherAvailability.findOne({
       teacherId: student.teacherId
-    });
+    }).lean();
+
+    if (!availability) {
+      return res.status(404).json({ message: "Teacher availability not found" });
+    }
 
     const response = [];
 
     for (const session of sessions) {
-      const day = moment(session.date).format("dddd").toLowerCase();
-      const dayAvailability = availability.weeklyAvailability.find(
-        d => d.day === day
-      );
+      // ✅ day based on TEACHER timezone
+      const day = moment(session.date).tz(teacherTZ).format("dddd").toLowerCase();
 
+      const dayAvailability = availability.weeklyAvailability.find(d => d.day === day);
       if (!dayAvailability) continue;
 
-      const slots = await generateAvailableSlots(
+      // ✅ 1) Available slots returned from generator (already removes booked)
+      const availableSlotsRaw = await generateAvailableSlots(
         {
           date: session.date,
           availability: dayAvailability,
@@ -214,33 +209,83 @@ exports.getMySessionSlots = async (req, res) => {
         {
           Duration: session.sessionDuration,
           breakDuration: session.breakDuration,
-          teacherTimezone: teacher.timezone || "Asia/Kolkata",
-          studentTimezone: student.timezone || "Asia/kolkata"
+          teacherTimezone: teacherTZ,
+          studentTimezone: studentTimezone
         },
-        []
+        session.bookedSlots || []
       );
+
+      // ✅ 2) My booked slots (same position ma show karva mate slots array ma merge karvana)
+      const myBookedSlots = (session.bookedSlots || [])
+        .filter(b => String(b.bookedBy) === String(student._id))
+        .map(b => ({
+          startTime: moment(b.startTime).tz(studentTimezone).format("HH:mm"),
+          endTime: moment(b.endTime).tz(studentTimezone).format("HH:mm"),
+          startTimeUTC: moment(b.startTime).utc().toISOString(),
+          endTimeUTC: moment(b.endTime).utc().toISOString(),
+          isBooked: true,
+          isBookedByMe: true
+        }));
+
+      // ✅ 3) Remove past slots (student timezone)
+      const nowStudent = moment().tz(studentTimezone);
+
+      const availableSlots = (availableSlotsRaw || [])
+        .filter(slot => {
+          const slotStartStudent = moment.utc(slot.startTimeUTC).tz(studentTimezone);
+          return slotStartStudent.isAfter(nowStudent);
+        })
+        .map(slot => ({
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          startTimeUTC: slot.startTimeUTC,
+          endTimeUTC: slot.endTimeUTC,
+          isBooked: false,
+          isBookedByMe: false
+        }));
+
+      // ✅ 4) Merge both in ONE ARRAY (same place, no extra row)
+      const finalMap = new Map();
+
+      // ✅ add available first
+      availableSlots.forEach(s => {
+        finalMap.set(s.startTimeUTC, s);
+      });
+
+      // ✅ overwrite with booked (GREEN)
+      myBookedSlots.forEach(s => {
+        finalMap.set(s.startTimeUTC, s);
+      });
+
+      // ✅ 5) Sort using UTC time (perfect order including 23:40-00:40 etc)
+      const slots = Array.from(finalMap.values()).sort((a, b) => {
+        return moment.utc(a.startTimeUTC).valueOf() - moment.utc(b.startTimeUTC).valueOf();
+      });
 
       response.push({
         sessionId: session._id,
         title: session.title,
-        date: moment(session.date)
-          .tz(studentTimezone)
-          .format("DD-MM-YYYY / dddd"),
-        slots: slots
+        sessionType: session.allowedStudentId ? "personal" : "common",
+        date: moment(session.date).tz(studentTimezone).format("DD-MM-YYYY / dddd"),
+        teacherName: teacher.name,
+        duration: session.sessionDuration,
+        slots
       });
     }
 
-    return res.json({
-      pagination: {
-        page,
-        limit,
-        count: response.length
-      },
-      sessions: response
-    });
+return res.json({
+  pagination: { page: 1, limit: 10, count: response.length },
+
+  meta: {
+    teacherName: teacher.name,
+    studentTimezone: studentTimezone
+  },
+
+  sessions: response
+});
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -248,21 +293,25 @@ exports.confirmSessionSlot = async (req, res) => {
   let lockKey;
 
   try {
-    const { sessionId, startTime } = req.body;
+    const { sessionId, startTimeUTC, endTimeUTC } = req.body;
     const studentId = req.user.id;
 
-    const student = await User.findById(studentId);
+    if (!sessionId || !startTimeUTC || !endTimeUTC) {
+      return res.status(400).json({
+        message: "sessionId, startTimeUTC, endTimeUTC are required"
+      });
+    }
+
+    const student = await User.findById(studentId).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
     const studentTZ = student.timezone || "Asia/Kolkata";
 
     const session = await SessionSlot.findById(sessionId);
-    if (!session) {
-      return res.status(404).json({ message: "Session not found" });
-    }
+    if (!session) return res.status(404).json({ message: "Session not found" });
 
     if (String(session.teacherId) !== String(student.teacherId)) {
-      return res.status(403).json({
-        message: "You are not allowed to confirm slot"
-      });
+      return res.status(403).json({ message: "Not allowed to book this session" });
     }
 
     if (
@@ -272,7 +321,18 @@ exports.confirmSessionSlot = async (req, res) => {
       return res.status(403).json({ message: "Not allowed" });
     }
 
-    lockKey = `lock:session:${sessionId}:slot:${startTime}`;
+    const startUTC = moment.utc(startTimeUTC);
+    const endUTC = moment.utc(endTimeUTC);
+
+    if (!startUTC.isValid() || !endUTC.isValid()) {
+      return res.status(400).json({ message: "Invalid UTC time format" });
+    }
+
+    if (!endUTC.isAfter(startUTC)) {
+      return res.status(400).json({ message: "Invalid slot duration" });
+    }
+
+    lockKey = `lock:session:${sessionId}:slot:${startUTC.toISOString()}`;
 
     if (redisClient?.isOpen) {
       const lock = await redisClient.set(lockKey, "locked", {
@@ -287,54 +347,9 @@ exports.confirmSessionSlot = async (req, res) => {
       }
     }
 
-    const teacher = await User.findById(session.teacherId);
-    const availability = await TeacherAvailability.findOne({
-      teacherId: session.teacherId
-    });
-
-    const day = moment(session.date).format("dddd").toLowerCase();
-    const dayAvailability = availability.weeklyAvailability.find(
-      d => d.day === day
-    );
-
-    if (!dayAvailability) {
-      return res.status(400).json({
-        message: "Teacher not available on this day"
-      });
-    }
-
-
-
-    const slotsUTC = generateAvailableSlots(
-      {
-        date: session.date,
-        availability: dayAvailability
-      },
-      {
-        sessionDuration: session.sessionDuration,
-        breakDuration: session.breakDuration,
-        teacherTimezone: teacher.timezone || "Asia/Kolkata",
-        studentTimezone: student.timezone || "Asia/Kolkata"
-      },
-      session.bookedSlots
-    );
-
-    const matchedSlot = slotsUTC.find(s => {
-      const displayTime = moment(s.startTimeUTC)
-        .tz(studentTZ)
-        .format("HH:mm");
-      return displayTime === startTime;
-    });
-
-    if (!matchedSlot) {
-      return res.status(400).json({
-        message: "Invalid or already booked slot"
-      });
-    }
-
-    const overlap = session.bookedSlots.some(b =>
-      matchedSlot.startTimeUTC < b.endTime &&
-      matchedSlot.endTimeUTC > b.startTime
+    const overlap = (session.bookedSlots || []).some(b =>
+      startUTC.isBefore(moment(b.endTime)) &&
+      endUTC.isAfter(moment(b.startTime))
     );
 
     if (overlap) {
@@ -342,39 +357,39 @@ exports.confirmSessionSlot = async (req, res) => {
     }
 
     session.bookedSlots.push({
-      startTime: matchedSlot.startTimeUTC,
-      endTime: matchedSlot.endTimeUTC,
+      startTime: startUTC.toDate(),
+      endTime: endUTC.toDate(),
       bookedBy: studentId
     });
 
     await session.save();
 
-    // Clear relevant student cache with pattern matching
+    // ✅ Clear caches
     if (redisClient?.isOpen) {
-      const studentCachePattern = `student:${studentId}:*`;
-      const studentKeys = await redisClient.keys(studentCachePattern);
-      if (studentKeys && studentKeys.length > 0) {
-        await redisClient.del(studentKeys);
-      }
+      const keys = [
+  ...(await redisClient.keys(`slots:teacher:${session.teacherId}:${session._id}:*`)),
+  ...(await redisClient.keys(`slots:student:*:${session._id}:*`)),
+  ...(await redisClient.keys(`slots:student:${studentId}:${session._id}:*`)),
+  ...(await redisClient.keys(`teacher:${session.teacherId}:sessions:*`)),
+  ...(await redisClient.keys(`student:${studentId}:sessions:*`))
+];
+
+
+      if (keys.length > 0) await redisClient.del(keys);
     }
 
-    res.json({
+    return res.json({
       message: "Slot booked successfully",
       booking: {
         sessionId: session._id,
-        date: moment(matchedSlot.startTimeUTC)
-          .tz(studentTZ)
-          .format("DD-MM-YYYY"),
-        startTime,
-        endTime: moment(matchedSlot.endTimeUTC)
-          .tz(studentTZ)
-          .format("HH:mm")
+        date: startUTC.clone().tz(studentTZ).format("DD-MM-YYYY"),
+        startTime: startUTC.clone().tz(studentTZ).format("HH:mm"),
+        endTime: endUTC.clone().tz(studentTZ).format("HH:mm")
       }
     });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
-
+    return res.status(500).json({ message: err.message });
   } finally {
     if (redisClient?.isOpen && lockKey) {
       await redisClient.del(lockKey);
@@ -465,208 +480,110 @@ exports.getMyConfirmedSessions = async (req, res) => {
   }
 };
 
-
 exports.getTeacherSessions = async (req, res) => {
   try {
     const teacherId = req.user.id;
-    const teacherTZ = req.user.timezone || "Asia/Kolkata";
 
-    // Parse query parameters with defaults
-    const type = req.query.type || "all";
+    const teacherUser = await User.findById(teacherId).lean();
+    const teacherTZ = teacherUser?.timezone || "Asia/Kolkata";
+
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
     const skip = (page - 1) * limit;
-    const status = req.query.status || "all";
-    const dateFrom = req.query.dateFrom;
-    const dateTo = req.query.dateTo;
 
-    // Build cache key
-    const cacheKey = `teacher:${teacherId}:sessions:${type}:${page}:${limit}:${status}:${dateFrom || ''}:${dateTo || ''}`;
+    const type = req.query.type || "all";
 
-    // Try Redis cache first
-    if (redisClient?.isOpen) {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) {
-        return res.json(JSON.parse(cached));
-      }
-    }
-
-    // Build query based on filters
     const query = { teacherId };
+    if (type === "personal") query.allowedStudentId = { $ne: null };
+    if (type === "common") query.allowedStudentId = null;
 
-    if (type === "personal") {
-      query.allowedStudentId = { $ne: null };
-    } else if (type === "common") {
-      query.allowedStudentId = null;
-    }
-
-    // Add date range filter if provided
-    if (dateFrom || dateTo) {
-      query.date = {};
-      if (dateFrom) {
-        const fromDate = moment(dateFrom, "DD-MM-YYYY").startOf("day").toDate();
-        if (!isNaN(fromDate.getTime())) {
-          query.date.$gte = fromDate;
-        }
-      }
-      if (dateTo) {
-        const toDate = moment(dateTo, "DD-MM-YYYY").endOf("day").toDate();
-        if (!isNaN(toDate.getTime())) {
-          query.date.$lte = toDate;
-        }
-      }
-    }
-
-    // Get total count for pagination
     const totalSessions = await SessionSlot.countDocuments(query);
 
-    // Fetch sessions with pagination
     const sessions = await SessionSlot.find(query)
-      .populate("allowedStudentId", "name email")
-      .populate("bookedSlots.bookedBy", "name email")
+      .populate("allowedStudentId", "name email userId")
+      .populate({
+        path: "bookedSlots.bookedBy",
+        select: "name email"
+      })
       .sort({ date: -1, createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .lean();
+      .limit(limit);
 
-    // Format response
-    const response = {
-      success: true,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalSessions / limit),
-        totalSessions,
-        limit,
-        hasNext: page < Math.ceil(totalSessions / limit),
-        hasPrev: page > 1
-      },
-      filters: {
-        type,
-        status,
-        dateRange: dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : null
-      },
-      sessions: await Promise.all(sessions.map(async (s) => {
-        // Get availability for each session's specific date
-        const sessionDate = moment(s.date).format("YYYY-MM-DD");
-        const dayOfWeek = moment(s.date).format("dddd").toLowerCase();
-        let dayAvailability;
-        
-        try {
-          // Get teacher's weekly availability (this is how it's stored)
-          const teacherAvailability = await TeacherAvailability.findOne({
-            teacherId
-          });
-          
-          console.log('Teacher availability found:', teacherAvailability);
-          
-          if (teacherAvailability && teacherAvailability.weeklyAvailability) {
-            const weeklyDay = teacherAvailability.weeklyAvailability.find(
-              d => d.day.toLowerCase() === dayOfWeek
-            );
-            
-            console.log('Weekly day found for', dayOfWeek, ':', weeklyDay);
-            
-            if (weeklyDay && weeklyDay.isAvailable) {
-              dayAvailability = {
-                startTime: weeklyDay.startTime,
-                endTime: weeklyDay.endTime,
-                weeklyAvailability: teacherAvailability.weeklyAvailability
-              };
-              console.log('Using teacher availability:', weeklyDay);
-            }
-          }
-          
-          // Also check for date-specific availability (override)
-          const dateSpecificAvailability = await TeacherAvailability.findOne({
-            teacherId,
-            date: sessionDate
-          });
-          
-          if (dateSpecificAvailability && dateSpecificAvailability.startTime && dateSpecificAvailability.endTime) {
-            dayAvailability = {
-              startTime: dateSpecificAvailability.startTime,
-              endTime: dateSpecificAvailability.endTime,
-              weeklyAvailability: teacherAvailability?.weeklyAvailability || []
-            };
-            console.log('Using date-specific availability for', sessionDate);
-          }
-          
-        } catch (error) {
-          console.log('Error fetching availability for session date:', sessionDate, error);
-          dayAvailability = null;
-        }
+    const teacherAvailability = await TeacherAvailability.findOne({ teacherId }).lean();
 
-        // Only use default if absolutely no availability found
-        if (!dayAvailability) {
-          console.log('No availability found for session date:', sessionDate, 'using default 9-5');
-          dayAvailability = {
-            startTime: "09:00",
-            endTime: "17:00",
-            weeklyAvailability: [{
-              day: dayOfWeek,
-              startTime: "09:00",
-              endTime: "17:00",
-              isAvailable: true
-            }]
-          };
-        }
+    const formattedSessions = await Promise.all(
+      sessions.map(async (s) => {
+        const dayOfWeek = moment(s.date).tz(teacherTZ).format("dddd").toLowerCase();
 
-        // Generate available slots for this session using the actual availability
-        const weeklyAvailability = dayAvailability?.weeklyAvailability?.find(
-          d => d.day.toLowerCase() === dayOfWeek
+        const weeklyDay = teacherAvailability?.weeklyAvailability?.find(
+          d => d.day?.toLowerCase() === dayOfWeek && d.isAvailable !== false
         );
-        
-        let slots = [];
-        if (weeklyAvailability && weeklyAvailability.startTime && weeklyAvailability.endTime && weeklyAvailability.isAvailable) {
-          slots = await generateAvailableSlots(
+
+        let availableSlots = [];
+        if (weeklyDay?.startTime && weeklyDay?.endTime) {
+          availableSlots = await generateAvailableSlots(
             {
               date: s.date,
-              availability: weeklyAvailability,
+              availability: weeklyDay,
               sessionId: s._id,
-              teacherId
+              teacherId,
+              studentId: null
             },
             {
               Duration: s.sessionDuration,
               breakDuration: s.breakDuration,
-              teacherTimezone: teacherTZ
+              teacherTimezone: teacherTZ,
+              studentTimezone: teacherTZ
             },
             s.bookedSlots || []
           );
         }
-        
+
+        const bookedSlots = (s.bookedSlots || []).map(b => ({
+          startTime: moment(b.startTime).tz(teacherTZ).format("HH:mm"),
+          endTime: moment(b.endTime).tz(teacherTZ).format("HH:mm"),
+          bookedBy: b.bookedBy,
+          studentName: b.bookedBy?.name || 'Unknown'
+        }));
+
+        // ✅ FIXED TOTAL: base = available + booked always
+        const totalSlots = availableSlots.length + bookedSlots.length;
+
         return {
           sessionId: s._id,
           title: s.title,
           date: moment(s.date).tz(teacherTZ).format("DD-MM-YYYY"),
           day: moment(s.date).tz(teacherTZ).format("dddd"),
+
           sessionDuration: s.sessionDuration,
           breakDuration: s.breakDuration,
-          allowedStudent: s.allowedStudentId,
-          totalSlots: slots.length,
-          slots: slots,
-          bookedSlots: s.bookedSlots?.map(b => ({
-            startTime: moment(b.startTime).tz(teacherTZ).format("HH:mm"),
-            endTime: moment(b.endTime).tz(teacherTZ).format("HH:mm"),
-            bookedBy: b.bookedBy
-          })) || [],
-          createdAt: moment(s.createdAt).tz(teacherTZ).format("DD-MM-YYYY HH:mm"),
-          updatedAt: moment(s.updatedAt).tz(teacherTZ).format("DD-MM-YYYY HH:mm")
+          allowedStudent: { name: s.allowedStudentId?.name || 'Unknown' },
+
+          totalSlots,
+          slots: availableSlots, // available
+          bookedSlots,           // booked
         };
-      }))
-    };
+      })
+    );
 
-    // Cache the response
-    if (redisClient?.isOpen) {
-      await redisClient.setEx(cacheKey, 300, JSON.stringify(response)); // 5 minutes cache
-    }
-
-    res.json(response);
+    return res.json({
+      success: true,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalSessions / limit),
+        totalSessions,
+        limit
+      },
+      sessions: formattedSessions
+    });
 
   } catch (error) {
-    console.error('Error in getTeacherSessions:', error);
-    res.status(500).json({
+    console.error("Error in getTeacherSessions:", error);
+    return res.status(500).json({
       success: false,
       message: "Error fetching teacher sessions"
     });
   }
 };
+
+

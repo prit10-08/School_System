@@ -2,29 +2,26 @@ const User = require("../models/User");
 const Mark = require("../models/Mark");
 
 exports.getMyProfile = async (req, res) => {
-  try 
-  {
-    const student = await User.findOne({ userId: req.user.userId, role: "student" }).select("-password -__v").lean();
+  try {
+    const student = await User.findOne({
+      userId: req.user.userId,
+      role: "student"
+    }).select("-password -__v").lean();
 
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // let teacher = null;
+    // ✅ Fix timezone key issue
+    student.timezone = student.timezone || student[" timezone"] || "Asia/Kolkata";
+    delete student[" timezone"];
 
-    // if (student.createdByTeacher) {
-    //   teacher = await User.findOne(
-    //     { userId: student.createdByTeacher, role: "teacher" },
-    //     { name: 1, userId: 1, _id: 0 }
-    //   );
-    // }
     res.json({ success: true, data: student });
-  } 
-  catch (err) 
-  {
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 exports.updateMyProfile = async (req, res) => {
   try {
@@ -103,14 +100,21 @@ exports.getMyMarks = async (req, res) => {
   }
 };
 
+const mongoose = require("mongoose");
+
 exports.getStudentStats = async (req, res) => {
   try {
     const studentUserId = req.user.userId;
+    const studentId = req.user.id; // Use _id field from JWT token
+    
+    // Debug: Log both IDs to see their format
+    console.log("User ID format:", studentUserId, typeof studentUserId);
+    console.log("Student _id format:", studentId, typeof studentId);
     
     // Get all marks for this student
     const marks = await Mark.find({ studentUserId });
     
-    // Calculate statistics
+    // Calculate quiz statistics
     const totalQuizzes = marks.length;
     let totalScore = 0;
     let totalPossible = 0;
@@ -127,6 +131,29 @@ exports.getStudentStats = async (req, res) => {
     
     const averageScore = totalPossible > 0 ? (totalScore / totalPossible) * 100 : 0;
     
+    // Get session statistics - use proper ObjectId for both queries
+    const SessionSlot = require("../models/SessionSlot");
+    const Session = require("../models/Session");
+    let bookedSessions = 0;
+    let totalSessions = 0;
+    
+    try {
+      const studentObjectId = new mongoose.Types.ObjectId(studentId);
+      bookedSessions = await SessionSlot.countDocuments({
+        "bookedSlots.bookedBy": studentObjectId
+      });
+      
+      totalSessions = await Session.countDocuments({
+        $or: [
+          { studentId: studentObjectId },
+          { studentId: null }
+        ]
+      });
+    } catch (err) {
+      console.error("ObjectId conversion failed:", err);
+      // Fallback to 0 if conversion fails
+    }
+    
     // Get last activity (most recent mark)
     const lastActivity = marks.length > 0 ? 
       new Date(Math.max(...marks.map(m => new Date(m.createdAt)))).toLocaleDateString() : 
@@ -138,6 +165,8 @@ exports.getStudentStats = async (req, res) => {
         averageScore: averageScore.toFixed(1),
         totalQuizzes,
         bestScore: bestScore.toFixed(1),
+        bookedSessions,
+        totalSessions,
         lastActivity
       }
     });

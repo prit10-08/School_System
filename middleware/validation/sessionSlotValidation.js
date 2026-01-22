@@ -83,37 +83,24 @@ exports.createSessionSlotsValidation = [
     })
 ];
 
+
 exports.confirmSessionSlotValidation = [
   body("sessionId")
     .notEmpty()
     .withMessage("Session ID is required")
     .isMongoId()
     .withMessage("Session ID must be a valid MongoDB ID"),
-    
-  body("startTime")
+
+  body("startTimeUTC")
     .notEmpty()
-    .withMessage("Start time is required")
-    .matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
-    .withMessage("Start time must be in HH:mm format (24-hour)")
-    .custom(value => {
-      const [hours, minutes] = value.split(':').map(Number);
-      
-      // Validate time boundaries
-      if (hours < 0 || hours > 23) {
-        throw new Error("Hours must be between 00 and 23");
-      }
-      if (minutes < 0 || minutes > 59) {
-        throw new Error("Minutes must be between 00 and 59");
-      }
-      
-      // Check if time is in reasonable 15-minute intervals
-      if (minutes % 15 !== 0) {
-        throw new Error("Start time must be in 15-minute intervals");
-      }
-      
-      return true;
-    })
+    .withMessage("startTimeUTC is required"),
+
+  body("endTimeUTC")
+    .notEmpty()
+    .withMessage("endTimeUTC is required")
 ];
+
+
 
 exports.validateSessionSlot = (req, res, next) => {
   const errors = validationResult(req);

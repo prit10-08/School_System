@@ -375,6 +375,7 @@ class TeacherDashboard {
                     <p><i class="fas fa-envelope"></i> ${student.email}</p>
                     <p><i class="fas fa-phone"></i> ${student.mobileNumber || 'Not provided'}</p>
                     <p><i class="fas fa-graduation-cap"></i> ${student.class ? `<span class="student-class">${student.class}</span>` : ''}</p>
+                    <p><i class="fas fa-globe"></i> ${student.timezone || 'Asia/Kolkata'}</p>
                 </div>
                 <div class="student-actions">
                     <button class="btn-edit" onclick="dashboard.editStudent('${student._id}')">
@@ -422,42 +423,42 @@ class TeacherDashboard {
         `).join('');
     }
 
-displayWeeklyAvailability(weeklyAvailability) {
-    const container = document.getElementById('currentSchedule');
-    if (!container) return;
+    displayWeeklyAvailability(weeklyAvailability) {
+        const container = document.getElementById('currentSchedule');
+        if (!container) return;
 
-    // Save button hidden by default
-    const saveBtn = document.getElementById('saveAvailabilityBtn');
-    if (saveBtn) saveBtn.style.display = 'none';
+        // Save button hidden by default
+        const saveBtn = document.getElementById('saveAvailabilityBtn');
+        if (saveBtn) saveBtn.style.display = 'none';
 
-    const dayNames = {
-        monday: 'Monday',
-        tuesday: 'Tuesday',
-        wednesday: 'Wednesday',
-        thursday: 'Thursday',
-        friday: 'Friday',
-        saturday: 'Saturday'
-    };
+        const dayNames = {
+            monday: 'Monday',
+            tuesday: 'Tuesday',
+            wednesday: 'Wednesday',
+            thursday: 'Thursday',
+            friday: 'Friday',
+            saturday: 'Saturday'
+        };
 
-    // Convert backend array to map
-    const availabilityMap = {};
-    if (Array.isArray(weeklyAvailability)) {
-        weeklyAvailability.forEach(slot => {
-            availabilityMap[slot.day] = slot;
-        });
-    }
+        // Convert backend array to map
+        const availabilityMap = {};
+        if (Array.isArray(weeklyAvailability)) {
+            weeklyAvailability.forEach(slot => {
+                availabilityMap[slot.day] = slot;
+            });
+        }
 
-    // Always build Monday-Saturday
-    const finalAvailability = Object.keys(dayNames).map(day => ({
-        day,
-        startTime: availabilityMap[day]?.startTime || "00:00",
-        endTime: availabilityMap[day]?.endTime || "00:00"
-    }));
+        // Always build Monday-Saturday
+        const finalAvailability = Object.keys(dayNames).map(day => ({
+            day,
+            startTime: availabilityMap[day]?.startTime || "00:00",
+            endTime: availabilityMap[day]?.endTime || "00:00"
+        }));
 
-    this.currentAvailabilityData = finalAvailability;
+        this.currentAvailabilityData = finalAvailability;
 
-    // ✅ Render with EDIT ICON per day
-    container.innerHTML = finalAvailability.map(slot => `
+        // ✅ Render with EDIT ICON per day
+        container.innerHTML = finalAvailability.map(slot => `
         <div class="schedule-item" data-day="${slot.day}">
             <div class="schedule-day">
                 ${dayNames[slot.day]}
@@ -480,38 +481,38 @@ displayWeeklyAvailability(weeklyAvailability) {
             </div>
         </div>
     `).join('');
-}
+    }
 
-formatTimeForDisplay(time24) {
-    if (!time24 || time24 === "00:00") return "00:00";
+    formatTimeForDisplay(time24) {
+        if (!time24 || time24 === "00:00") return "00:00";
 
-    const [hours, minutes] = time24.split(':');
-    const hour = parseInt(hours, 10);
+        const [hours, minutes] = time24.split(':');
+        const hour = parseInt(hours, 10);
 
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
 
-    return `${displayHour}:${minutes} ${period}`;
-}
+        return `${displayHour}:${minutes} ${period}`;
+    }
 
-enableInlineEdit() {
-    const container = document.getElementById('currentSchedule');
-    if (!container) return;
+    enableInlineEdit() {
+        const container = document.getElementById('currentSchedule');
+        if (!container) return;
 
-    const editBtn = document.getElementById('editAvailabilityBtn');
-    const saveBtn = document.getElementById('saveAvailabilityBtn');
+        const editBtn = document.getElementById('editAvailabilityBtn');
+        const saveBtn = document.getElementById('saveAvailabilityBtn');
 
-    container.querySelectorAll('.schedule-item').forEach(item => {
-        const day = item.dataset.day;
-        const timeDiv = item.querySelector('.schedule-time');
+        container.querySelectorAll('.schedule-item').forEach(item => {
+            const day = item.dataset.day;
+            const timeDiv = item.querySelector('.schedule-time');
 
-        let startTime = timeDiv.dataset.start || "00:00";
-        let endTime = timeDiv.dataset.end || "00:00";
+            let startTime = timeDiv.dataset.start || "00:00";
+            let endTime = timeDiv.dataset.end || "00:00";
 
-        if (startTime === "00:00") startTime = "";
-        if (endTime === "00:00") endTime = "";
+            if (startTime === "00:00") startTime = "";
+            if (endTime === "00:00") endTime = "";
 
-        timeDiv.innerHTML = `
+            timeDiv.innerHTML = `
             <div class="time-input-group">
                 <input type="time" class="time-picker"
                        data-day="${day}" data-type="start-time"
@@ -530,111 +531,111 @@ enableInlineEdit() {
                 </button>
             </div>
         `;
-    });
+        });
 
-    if (editBtn) editBtn.style.display = 'none';
-    if (saveBtn) saveBtn.style.display = 'block';
-}
+        if (editBtn) editBtn.style.display = 'none';
+        if (saveBtn) saveBtn.style.display = 'block';
+    }
 
 
-saveInlineEditedAvailability() {
-    const updatedAvailability = [];
+    saveInlineEditedAvailability() {
+        const updatedAvailability = [];
 
-    document.querySelectorAll(".schedule-item").forEach(item => {
-        const day = item.dataset.day;
+        document.querySelectorAll(".schedule-item").forEach(item => {
+            const day = item.dataset.day;
+            const timeDiv = item.querySelector(".schedule-time");
+
+            // ✅ If day is in edit mode (inputs exist)
+            const startInput = item.querySelector('[data-type="start-time"]');
+            const endInput = item.querySelector('[data-type="end-time"]');
+
+            let startTime = "";
+            let endTime = "";
+
+            if (startInput && endInput) {
+                // ✅ take from input values
+                startTime = startInput.value || "00:00";
+                endTime = endInput.value || "00:00";
+            } else {
+                // ✅ take from old saved dataset values
+                startTime = timeDiv?.dataset.start || "00:00";
+                endTime = timeDiv?.dataset.end || "00:00";
+            }
+
+            // ✅ if cleared day
+            if (startTime === "00:00" && endTime === "00:00") {
+                updatedAvailability.push({ day, startTime, endTime });
+                return;
+            }
+
+            // ✅ validate start < end
+            if (startTime < endTime) {
+                updatedAvailability.push({ day, startTime, endTime });
+            } else {
+                this.showMessage(`${day}: Start time must be before end time`, "error");
+            }
+        });
+
+        this.saveWeeklyAvailabilityToBackend(updatedAvailability);
+    }
+
+    async saveWeeklyAvailabilityToBackend(weeklyAvailability) {
+        try {
+            this.showLoading();
+
+            const response = await this.apiCall(
+                '/teacher-availability/availability',
+                'POST',
+                { weeklyAvailability }
+            );
+
+            if (response.success) {
+                this.showMessage('Weekly availability saved successfully!', 'success');
+                this.currentAvailabilityData = weeklyAvailability;
+                this.exitInlineEdit();
+                await this.loadAvailability();
+            } else {
+                this.showMessage(response.message || 'Failed to save availability', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving weekly availability:', error);
+            this.showMessage('Error saving availability: ' + (error.message || 'Unknown error'), 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    exitInlineEdit() {
+        const editBtn = document.getElementById('editAvailabilityBtn');
+        const saveBtn = document.getElementById('saveAvailabilityBtn');
+
+        if (editBtn) editBtn.style.display = 'block';
+        if (saveBtn) saveBtn.style.display = 'none';
+
+        if (this.currentAvailabilityData) {
+            this.displayWeeklyAvailability(this.currentAvailabilityData);
+        }
+    }
+
+    enableDayEdit(day) {
+        // Show Save button when teacher edits any day
+        const saveBtn = document.getElementById("saveAvailabilityBtn");
+        if (saveBtn) saveBtn.style.display = "block";
+
+        const item = document.querySelector(`.schedule-item[data-day="${day}"]`);
+        if (!item) return;
+
         const timeDiv = item.querySelector(".schedule-time");
+        if (!timeDiv) return;
 
-        // ✅ If day is in edit mode (inputs exist)
-        const startInput = item.querySelector('[data-type="start-time"]');
-        const endInput = item.querySelector('[data-type="end-time"]');
+        let startTime = timeDiv.dataset.start || "00:00";
+        let endTime = timeDiv.dataset.end || "00:00";
 
-        let startTime = "";
-        let endTime = "";
+        // If not set, show blank inputs (avoid 12:00 AM view)
+        if (startTime === "00:00") startTime = "";
+        if (endTime === "00:00") endTime = "";
 
-        if (startInput && endInput) {
-            // ✅ take from input values
-            startTime = startInput.value || "00:00";
-            endTime = endInput.value || "00:00";
-        } else {
-            // ✅ take from old saved dataset values
-            startTime = timeDiv?.dataset.start || "00:00";
-            endTime = timeDiv?.dataset.end || "00:00";
-        }
-
-        // ✅ if cleared day
-        if (startTime === "00:00" && endTime === "00:00") {
-            updatedAvailability.push({ day, startTime, endTime });
-            return;
-        }
-
-        // ✅ validate start < end
-        if (startTime < endTime) {
-            updatedAvailability.push({ day, startTime, endTime });
-        } else {
-            this.showMessage(`${day}: Start time must be before end time`, "error");
-        }
-    });
-
-    this.saveWeeklyAvailabilityToBackend(updatedAvailability);
-}
-
-async saveWeeklyAvailabilityToBackend(weeklyAvailability) {
-    try {
-        this.showLoading();
-
-        const response = await this.apiCall(
-            '/teacher-availability/availability',
-            'POST',
-            { weeklyAvailability }
-        );
-
-        if (response.success) {
-            this.showMessage('Weekly availability saved successfully!', 'success');
-            this.currentAvailabilityData = weeklyAvailability;
-            this.exitInlineEdit();
-            await this.loadAvailability();
-        } else {
-            this.showMessage(response.message || 'Failed to save availability', 'error');
-        }
-    } catch (error) {
-        console.error('Error saving weekly availability:', error);
-        this.showMessage('Error saving availability: ' + (error.message || 'Unknown error'), 'error');
-    } finally {
-        this.hideLoading();
-    }
-}
-
-exitInlineEdit() {
-    const editBtn = document.getElementById('editAvailabilityBtn');
-    const saveBtn = document.getElementById('saveAvailabilityBtn');
-
-    if (editBtn) editBtn.style.display = 'block';
-    if (saveBtn) saveBtn.style.display = 'none';
-
-    if (this.currentAvailabilityData) {
-        this.displayWeeklyAvailability(this.currentAvailabilityData);
-    }
-}
-
-enableDayEdit(day) {
-    // Show Save button when teacher edits any day
-    const saveBtn = document.getElementById("saveAvailabilityBtn");
-    if (saveBtn) saveBtn.style.display = "block";
-
-    const item = document.querySelector(`.schedule-item[data-day="${day}"]`);
-    if (!item) return;
-
-    const timeDiv = item.querySelector(".schedule-time");
-    if (!timeDiv) return;
-
-    let startTime = timeDiv.dataset.start || "00:00";
-    let endTime = timeDiv.dataset.end || "00:00";
-
-    // If not set, show blank inputs (avoid 12:00 AM view)
-    if (startTime === "00:00") startTime = "";
-    if (endTime === "00:00") endTime = "";
-
-    timeDiv.innerHTML = `
+        timeDiv.innerHTML = `
         <div class="time-input-group" style="display:flex; align-items:center; gap:10px;">
             <input type="time" class="time-picker"
                    data-day="${day}" data-type="start-time"
@@ -653,15 +654,15 @@ enableDayEdit(day) {
             </button>
         </div>
     `;
-}
+    }
 
-clearDayTime(day) {
-    const startInput = document.querySelector(`input[data-type="start-time"][data-day="${day}"]`);
-    const endInput = document.querySelector(`input[data-type="end-time"][data-day="${day}"]`);
+    clearDayTime(day) {
+        const startInput = document.querySelector(`input[data-type="start-time"][data-day="${day}"]`);
+        const endInput = document.querySelector(`input[data-type="end-time"][data-day="${day}"]`);
 
-    if (startInput) startInput.value = "";
-    if (endInput) endInput.value = "";
-}
+        if (startInput) startInput.value = "";
+        if (endInput) endInput.value = "";
+    }
 
 
 
@@ -691,6 +692,7 @@ clearDayTime(day) {
             <div class="student-info">
                 <h4>${student.name}</h4>
                 <p>${student.email}</p>
+                <p><i class="fas fa-globe"></i> ${student.timezone || 'Asia/Kolkata'}</p>
             </div>
             ${student.class ? `<span class="student-class">${student.class}</span>` : ''}
         </div>
@@ -736,6 +738,18 @@ clearDayTime(day) {
     async addStudent(form) {
         const formData = new FormData(form);
         formData.append('teacherUserId', this.teacher.userId);
+        
+        // Debug: Get timezone value specifically
+        const timezoneSelect = form.querySelector('select[name="timezone"]');
+        const selectedTimezone = timezoneSelect ? timezoneSelect.value : 'NOT_FOUND';
+        console.log('Timezone select element:', timezoneSelect);
+        console.log('Selected timezone value:', selectedTimezone);
+        
+        // Debug: Log all form data
+        console.log('Form data being sent:');
+        for (let [key, value] of formData.entries()) {
+            console.log(`${key}: ${value}`);
+        }
 
         try {
             this.showLoading();
@@ -1890,7 +1904,7 @@ clearDayTime(day) {
             if (response.success) {
                 this.allSessions = response.sessions;
                 this.displaySessions(response.sessions, response.pagination);
-                
+
                 // Update recent sessions for dashboard (only first 5)
                 this.updateRecentSessions(response.sessions.slice(0, 5));
             } else {
@@ -1912,12 +1926,12 @@ clearDayTime(day) {
 
         if (!sessions || sessions.length === 0) {
             container.innerHTML = `
-                <div class="sessions-empty">
-                    <i class="fas fa-calendar-alt"></i>
-                    <p>No sessions created yet</p>
-                    <small>Click "Create Session" to create a new session</small>
-                </div>
-            `;
+      <div class="sessions-empty">
+        <i class="fas fa-calendar-alt"></i>
+        <p>No sessions created yet</p>
+        <small>Click "Create Session" to create a new session</small>
+      </div>
+    `;
             paginationContainer.style.display = 'none';
             return;
         }
@@ -1927,76 +1941,71 @@ clearDayTime(day) {
             const typeClass = isPersonal ? 'personal' : 'common';
             const typeText = isPersonal ? 'PERSONAL' : 'COMMON';
 
-            // Debug logging to check slots data
-            // Use slots array from backend response (contains generated slots)
-            const slotsCount = session.slots ? session.slots.length : (session.totalSlots || 0);
-            const hasSlots = session.slots && session.slots.length > 0;
+            // ✅ Backend gives:
+            // session.slots = available slots only
+            // session.bookedSlots = booked slots only
+            const availableSlots = session.slots || [];
+            const bookedSlots = session.bookedSlots || [];
+
+            const availableCount = availableSlots.length;
+            const bookedCount = bookedSlots.length;
+
+            // ✅ FIX: Total slots always correct
+            const totalSlots = availableCount + bookedCount;
 
             return `
-                <div class="session-card" data-session-id="${session.sessionId}">
-                    <div class="session-header">
-                        <h3 class="session-title">${session.title}</h3>
-                        <span class="session-type ${typeClass}">${typeText}</span>
-                    </div>
-                    <div class="session-content">
-                        
-                        <div class="session-info">
-                            <i class="fas fa-calendar"></i>
-                            <span>${session.date} (${session.day})</span>
-                        </div>
-                        <div class="session-info">
-                            <i class="fas fa-clock"></i>
-                            <span>${session.sessionDuration} min session • ${session.breakDuration} min break</span>
-                        </div>
-                        ${isPersonal && session.allowedStudent ? `
-                            <div class="session-info">
-                                <i class="fas fa-user"></i>
-                                <span>Student: ${session.allowedStudent.name}</span>
-                            </div>
-                        ` : ''}
-                        <div class="session-info">
-                            <i class="fas fa-users"></i>
-                            <span>${slotsCount} Available slot${slotsCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        ${hasSlots ? `
-                            <div class="session-slots">
-                                <div class="session-slots-header">Available Slots (${slotsCount})</div>
-                                <div class="slots-grid">
-                                    ${session.slots.map((slot, index) => `
-                                        <div class="slot-item ${slot.isBooked ? 'booked' : 'available'}">
-                                            ${slot.startTime} - ${slot.endTime}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : `
-                            <div class="session-slots">
-                                <div class="session-slots-header">No slots available</div>
-                                <div class="slots-grid">
-                                    <div class="slot-item empty">
-                                        Slots will appear here
-                                    </div>
-                                </div>
-                            </div>
-                        `}
-                        ${session.bookedSlots && session.bookedSlots.length > 0 ? `
-                            <div class="session-slots">
-                                <div class="session-slots-header">Booked Slots (${session.bookedSlots.length})</div>
-                                <div class="slots-grid">
-                                    ${session.bookedSlots.map(slot => `
-                                        <div class="slot-item booked">
-                                            ${slot.startTime} - ${slot.endTime}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
+      <div class="session-card" data-session-id="${session.sessionId}">
+        <div class="session-header">
+          <h3 class="session-title">${session.title}</h3>
+          <span class="session-type ${typeClass}">${typeText}</span>
+        </div>
+
+        <div class="session-content">
+          <div class="session-info">
+            <i class="fas fa-calendar"></i>
+            <span>${session.date} (${session.day})</span>
+          </div>
+
+          <div class="session-info">
+            <i class="fas fa-clock"></i>
+            <span>${session.sessionDuration} min session • ${session.breakDuration} min break</span>
+          </div>
+
+          ${isPersonal && session.allowedStudent ? `
+            <div class="session-info">
+              <i class="fas fa-user"></i>
+              <span>Student: ${session.allowedStudent.name}</span>
+            </div>
+          ` : ''}
+
+          <!-- ✅ FIX: Total slots show -->
+          <div class="session-info">
+            <i class="fas fa-users"></i>
+            <span>Total Slots: ${totalSlots}</span>
+          </div>
+
+          <!-- ✅ My Slots (Merged Available + Booked) -->
+          <div class="session-slots">
+            <div class="session-slots-header">My Slots (${totalSlots})</div>
+
+            <div class="slots-grid">
+              ${totalSlots > 0
+                    ? this.mergeAndSortSlots(availableSlots, bookedSlots).map(slot => `
+                      <div class="slot-item ${slot.isBooked ? 'booked' : 'available'}">
+                        ${slot.startTime} - ${slot.endTime}
+                        ${slot.isBooked ? `[${slot.studentName}]` : ''}
+                      </div>
+                    `).join('')
+                    : `<div class="slot-item empty">No slots available</div>`
+                }
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
         }).join('');
 
-        // Update pagination
+        // Pagination update
         if (pagination) {
             this.updateSessionsPagination(pagination);
             paginationContainer.style.display = 'flex';
@@ -2056,7 +2065,7 @@ clearDayTime(day) {
                             <div class="slots-grid">
                                 ${session.bookedSlots.map(slot => `
                                     <div class="slot-item booked">
-                                        ${slot.startTime} - ${slot.endTime}
+                                        ${slot.startTime} – ${slot.endTime} [${slot.studentName}]
                                     </div>
                                 `).join('')}
                             </div>
@@ -2080,19 +2089,42 @@ clearDayTime(day) {
         nextBtn.disabled = pagination.currentPage >= pagination.totalPages;
     }
 
+    mergeAndSortSlots(availableSlots, bookedSlots) {
+        // Create array with all slots, marking booked slots
+        const allSlots = [
+            ...availableSlots.map(slot => ({
+                ...slot,
+                isBooked: false
+            })),
+            ...bookedSlots.map(slot => ({
+                ...slot,
+                isBooked: true
+            }))
+        ];
+
+        // Sort by start time to maintain chronological order
+        return allSlots.sort((a, b) => {
+            const timeA = a.startTime.split(':').map(Number);
+            const timeB = b.startTime.split(':').map(Number);
+            const minutesA = timeA[0] * 60 + timeA[1];
+            const minutesB = timeB[0] * 60 + timeB[1];
+            return minutesA - minutesB;
+        });
+    }
+
     showSessionModal() {
         const modal = document.getElementById('sessionModal');
         const sessionDateInput = document.getElementById('sessionDate');
-        
+
         // Set minimum date to today to prevent past date selection
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
         const minDate = `${yyyy}-${mm}-${dd}`;
-        
+
         sessionDateInput.setAttribute('min', minDate);
-        
+
         // Use show class for proper centering
         modal.classList.add('show');
         this.loadStudentsForSession();
@@ -2109,7 +2141,7 @@ clearDayTime(day) {
         if (selectionType !== 'particular') {
             return; // Don't load students if not particular student
         }
-        
+
         // Use more specific selector to get the session modal dropdown
         const studentSelect = document.querySelector('#particularStudentRow #studentSelect');
         if (!studentSelect) {
@@ -2125,7 +2157,7 @@ clearDayTime(day) {
             const response = await this.apiCall('/teachers/students', 'GET');
 
             if (response && response.success && response.data) {
-    
+
                 if (response.data.length > 0) {
                     // Make row visible first with inline style override
                     const particularStudentRow = document.getElementById('particularStudentRow');
@@ -2205,28 +2237,28 @@ clearDayTime(day) {
             if (response.success) {
                 this.showMessage('Session created successfully', 'success');
                 this.hideSessionModal();
-                
+
                 // Add the new session directly to the current sessions list
                 if (response.data) {
-                    // Get current sessions
-                    const currentSessions = this.sessions || [];
-                    
+                    // Get current sessions (use allSessions which is the correct property)
+                    const currentSessions = this.allSessions || [];
+
                     // Map response data to match display function expectations
                     const newSession = {
                         ...response.data,
                         sessionId: response.data.sessionId, // Map sessionId to sessionId
                         allowedStudent: response.data.allowedStudent || null
                     };
-                    
+
                     // Add new session to the beginning of the array
                     currentSessions.unshift(newSession);
-                    
+
                     // Update the sessions data
-                    this.sessions = currentSessions;
-                    
+                    this.allSessions = currentSessions;
+
                     // Immediately display the updated sessions
-                    this.displaySessions(this.sessions);
-                    
+                    this.displaySessions(this.allSessions, { currentPage: 1, totalPages: 1, totalSessions: this.allSessions.length });
+
                 } else {
                     // Fallback: reload all sessions
                     await new Promise(resolve => setTimeout(resolve, 500));

@@ -1884,18 +1884,25 @@ input[type="time"]::-moz-datetime-edit-ampm-field {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 6px;
     margin-top: 8px;
+    align-items: center;
 }
 
 .slot-item {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 8px 8px;
     font-size: 11px;
     text-align: center;
     transition: all 0.2s ease;
     font-weight: 500;
-    line-height: 1.2;
+    line-height: 1;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    box-sizing: border-box;
 }
 
 .slot-item.booked {
@@ -1912,7 +1919,6 @@ input[type="time"]::-moz-datetime-edit-ampm-field {
 
 .slot-item.available:hover {
     background: #d1fae5;
-    transform: scale(1.02);
 }
 
 .slot-item.empty {

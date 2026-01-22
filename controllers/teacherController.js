@@ -92,7 +92,10 @@ exports.getStudentById = async (req, res) => {
   }
 };
 exports.createStudent = async (req, res) => {
-  const { userId, name, email, password, age, class: className, city, state, country, mobileNumber, role } = req.body;
+  const { userId, name, email, password, age, class: className, city, state, country, mobileNumber, role, timezone } = req.body;
+  
+  console.log('Request body:', req.body);
+  console.log('Received timezone:', timezone);
 
   try {
     const exists = await User.findOne({ $or: [{ userId }, { email }] });
@@ -102,7 +105,7 @@ exports.createStudent = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const student = await User.create({
+    const studentData = {
       role: "student",
       userId,
       name,
@@ -114,9 +117,14 @@ exports.createStudent = async (req, res) => {
       state,
       country,
       mobileNumber,
+      timezone: timezone || "Asia/Kolkata",
       teacherId: req.user.id,
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
-    });
+    };
+    
+    console.log('Student data to be saved:', studentData);
+
+    const student = await User.create(studentData);
 
     res.status(201).json({
       success: true,
@@ -388,7 +396,8 @@ exports.uploadStudentsCSV = async (req, res) => {
         city,
         state,
         country,
-        mobileNumber
+        mobileNumber,
+        timezone
       } = row;
 
       const exists = await User.findOne({
@@ -419,8 +428,9 @@ exports.uploadStudentsCSV = async (req, res) => {
           city: city || "",
           state: state || "",
           country: country || "",
-          teacherId,
-          mobileNumber
+          mobileNumber,
+          timezone: timezone || "Asia/Kolkata",
+          teacherId
         });
 
         inserted++;

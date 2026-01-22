@@ -1,5 +1,5 @@
 const Quiz = require("../models/Quiz");
-
+const User = require("../models/User");
 exports.createQuiz = async (req, res) => {
   try {
 
@@ -187,16 +187,39 @@ exports.deleteQuiz = async (req, res) => {
 
 exports.getAvailableQuizzes = async (req, res) => {
   try {
-    const quizzes = await Quiz.find({}).select("-__v -questions.correctOption");
-    
-    const quizzesWithDetails = quizzes.map(quiz => ({
+    // ✅ logged in student fetch
+    const student = await User.findById(req.user.id).select("teacherId");
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    if (!student.teacherId) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher not assigned to this student"
+      });
+    }
+
+    // ✅ Only quizzes created by student's teacher
+    const quizzes = await Quiz.find({ teacherId: student.teacherId })
+      .select("-__v -questions.correctOption")
+      .sort({ createdAt: -1 });
+
+    const quizzesWithDetails = quizzes.map((quiz) => ({
       _id: quiz._id,
       title: quiz.title,
       subject: quiz.subject,
       description: quiz.description || `Test your knowledge in ${quiz.subject}`,
       duration: quiz.duration || 30,
       questionCount: quiz.questions ? quiz.questions.length : 0,
-      totalMarks: quiz.totalMarks || quiz.questions ? quiz.questions.length : 0,
+
+      // ✅ fix operator precedence issue
+      totalMarks: quiz.totalMarks || (quiz.questions ? quiz.questions.length : 0),
+
       createdAt: quiz.createdAt
     }));
 
@@ -204,8 +227,10 @@ exports.getAvailableQuizzes = async (req, res) => {
       success: true,
       data: quizzesWithDetails
     });
+
   } catch (err) {
     console.error("Error getting available quizzes:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+

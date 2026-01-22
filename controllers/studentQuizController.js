@@ -73,12 +73,12 @@ exports.submitQuiz = async (req, res) => {
     }
 
     await Mark.create({
-      studentUserId: req.user.userId,
-      subject: quiz.subject,
-      marks: score,
-      student_id: req.user.id,
-      teacherId: student.teacherId
-    });
+  studentUserId: req.user.userId,
+  subject: quiz.subject,
+  score: score,
+  total: quiz.totalMarks
+});
+
 
     res.json({
       message: "Quiz submitted successfully",
