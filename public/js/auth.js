@@ -271,31 +271,40 @@ class AuthSystem {
 
     clearAllErrors() {
         document.querySelectorAll('input, select').forEach(input => this.clearError(input));
-        document.querySelector('.file-label .upload-text').textContent = 'Choose Profile Image';
-        document.getElementById('signup-profileImage').value = '';
+        const uploadText = document.querySelector('.file-label .upload-text');
+        if (uploadText) {
+            uploadText.textContent = 'Choose Profile Image';
+        }
+        const profileImage = document.getElementById('signup-profileImage');
+        if (profileImage) {
+            profileImage.value = '';
+        }
     }
 
     showLoading() {
-        document.getElementById('loading').classList.add('active');
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) {
+            loadingEl.classList.add('active');
+        }
     }
 
     hideLoading() {
-        document.getElementById('loading').classList.remove('active');
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) {
+            loadingEl.classList.remove('active');
+        }
     }
 
     showMessage(text, type = 'info') {
         const container = document.getElementById('message-container');
+        if (!container) return;
+        
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
         msg.innerHTML = `${text}<button class="message-close">&times;</button>`;
         container.appendChild(msg);
 
         setTimeout(() => msg.remove(), 5000);
-        msg.querySelector('.message-close').addEventListener('click', () => msg.remove());
-    }
-
-    clearMessages() {
-        document.getElementById('message-container').innerHTML = '';
     }
 }
 

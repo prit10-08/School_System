@@ -50,7 +50,6 @@ class StudentDashboard {
             });
         });
 
-        // Profile dropdown
         const profileDropdown = document.querySelector('.profile-dropdown');
         const dropdownToggle = profileDropdown?.querySelector('.dropdown-toggle');
         const dropdownMenu = profileDropdown?.querySelector('.dropdown-menu');
@@ -109,8 +108,9 @@ class StudentDashboard {
             // If validation errors exist, include them
             if (error.errors && Array.isArray(error.errors)) {
                 const validationErrors = error.errors.map(err =>
-                    `${err.field}: ${err.message}`
+                    `${err.path || err.param || "field"}: ${err.msg || err.message}`
                 ).join(', ');
+
                 errorMessage = `Validation failed: ${validationErrors}`;
             }
 
@@ -260,15 +260,18 @@ class StudentDashboard {
         }
 
         container.innerHTML = quizzes.slice(0, 3).map(quiz => `
-            <div class="quiz-item">
-                <div class="quiz-info-small">
-                    <div class="quiz-title-small">${quiz.title}</div>
-                    <div class="quiz-meta-small">${quiz.subject} • ${quiz.duration || 30} mins</div>
-                </div>
-                <button class="btn-primary" onclick="dashboard.startQuiz('${quiz._id}')">Start</button>
+        <div class="quiz-item teacher-like-quiz-item">
+            <div class="quiz-info-small">
+                <div class="quiz-title-small">${quiz.title}</div>
+                <div class="quiz-meta-small">${quiz.subject || "Quiz"} • ${quiz.duration || 30} mins</div>
             </div>
-        `).join('');
+            <button class="btn-start-quiz-small" onclick="dashboard.startQuiz('${quiz._id}')">
+                Start
+            </button>
+        </div>
+    `).join('');
     }
+
 
     updateQuizList(quizzes) {
         const container = document.getElementById('quizList');
@@ -279,17 +282,33 @@ class StudentDashboard {
         }
 
         container.innerHTML = quizzes.map(quiz => `
-            <div class="quiz-card">
-                <div class="quiz-title">${quiz.title}</div>
-                <div class="quiz-subject">${quiz.subject}</div>
-                <div class="quiz-meta">
-                    <span><i class="fas fa-clock"></i> ${quiz.duration || 30} mins</span>
-                    <span><i class="fas fa-question-circle"></i> ${quiz.questionCount || 0} questions</span>
+        <div class="student-quiz-card">
+
+            <div class="student-quiz-top">
+                <div>
+                    <h3 class="student-quiz-title">${quiz.title}</h3>
                 </div>
-                <button class="btn-primary" onclick="dashboard.startQuiz('${quiz._id}')">Start Quiz</button>
+
+                <span class="student-quiz-badge">
+                    ${quiz.subject || "Quiz"}
+                </span>
             </div>
-        `).join('');
+
+            <div class="student-quiz-meta">
+                <span><i class="fas fa-question-circle"></i> ${quiz.questionCount || (quiz.questions?.length || 0)} Questions</span>
+                <span><i class="fas fa-clock"></i> ${quiz.duration || 30} mins</span>
+            </div>
+
+            <div class="student-quiz-actions">
+                <button class="btn-start-quiz" onclick="dashboard.startQuiz('${quiz._id}')">
+                    Start Quiz
+                </button>
+            </div>
+
+        </div>
+    `).join('');
     }
+
 
     async startQuiz(quizId) {
         try {
@@ -333,7 +352,7 @@ class StudentDashboard {
         `).join('');
 
         modal.classList.add('active');
-        this.startQuizTimer((quiz.duration || 30) * 60); // Convert minutes to seconds
+        this.startQuizTimer((quiz.duration || 30) * 60);
     }
 
     startQuizTimer(durationSeconds) {
@@ -347,7 +366,7 @@ class StudentDashboard {
 
             if (timeRemaining <= 0) {
                 clearInterval(this.quizTimer);
-                this.submitQuiz(); // Auto-submit when time runs out
+                this.submitQuiz();
             }
             timeRemaining--;
         }, 1000);
@@ -358,7 +377,7 @@ class StudentDashboard {
 
         try {
             const answers = [];
-            const questions = this.currentQuiz.questions;
+            const questions = this.currentQuiz.questions || [];
 
             for (let i = 0; i < questions.length; i++) {
                 const selectedOption = document.querySelector(`input[name="question${i}"]:checked`);
@@ -368,19 +387,35 @@ class StudentDashboard {
                     return;
                 }
 
-                answers.push(parseInt(selectedOption.value));
+                // ✅ Send only option index (same like your old code + Postman style)
+                const optionIndex = Number(selectedOption.value);
+                const optionMap = ["a", "b", "c", "d"];
+                answers.push(optionMap[optionIndex]);
             }
 
-            this.showLoading();
-            const response = await this.apiRequest(`${this.apiBaseUrl}/quiz/${this.currentQuiz._id}/submit`, {
-                method: 'POST',
-                body: JSON.stringify({ answers })
-            });
+            console.log("✅ FINAL ANSWERS ARRAY:", answers);
+            console.log("✅ FINAL REQUEST BODY:", JSON.stringify({ answers }));
 
-            this.showMessage(`Quiz submitted! Score: ${response.obtainedMarks}/${response.totalMarks}`, 'success');
+            this.showLoading();
+
+            const response = await this.apiRequest(
+                `${this.apiBaseUrl}/quiz/${this.currentQuiz._id}/submit`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({ answers })
+                }
+            );
+
+            this.showMessage(
+                `Quiz submitted! Score: ${response.obtainedMarks}/${response.totalMarks}`,
+                'success'
+            );
+
             this.closeQuizModal();
-            this.loadDashboardData(); // Refresh data
+            this.loadDashboardData();
+
         } catch (error) {
+            console.error("❌ Quiz Submit Error:", error);
             this.showMessage('Error submitting quiz: ' + error.message, 'error');
         } finally {
             this.hideLoading();
@@ -481,31 +516,31 @@ class StudentDashboard {
         }
     }
 
-async loadSessions() {
-    try {
-        this.showLoading();
+    async loadSessions() {
+        try {
+            this.showLoading();
 
-        const [availableResponse, confirmedResponse] = await Promise.all([
-            this.apiRequest(`${this.sessionApiBaseUrl}/mysessions`),
-            this.apiRequest(`${this.sessionApiBaseUrl}/my-confirmed-sessions`)
-        ]);
+            const [availableResponse, confirmedResponse] = await Promise.all([
+                this.apiRequest(`${this.sessionApiBaseUrl}/mysessions`),
+                this.apiRequest(`${this.sessionApiBaseUrl}/my-confirmed-sessions`)
+            ]);
 
-        const meta = availableResponse.meta || {};
+            const meta = availableResponse.meta || {};
 
-        this.updateSessionsList(
-            availableResponse.sessions || [],
-            confirmedResponse.sessions || [],
-            meta
-        );
+            this.updateSessionsList(
+                availableResponse.sessions || [],
+                confirmedResponse.sessions || [],
+                meta
+            );
 
-    } catch (error) {
-        console.error("Error loading sessions:", error);
-        this.showMessage("Error loading sessions: " + error.message, "error");
-        this.showEmptySessionsState();
-    } finally {
-        this.hideLoading();
+        } catch (error) {
+            console.error("Error loading sessions:", error);
+            this.showMessage("Error loading sessions: " + error.message, "error");
+            this.showEmptySessionsState();
+        } finally {
+            this.hideLoading();
+        }
     }
-}
 
     showEmptySessionsState() {
         const container = document.getElementById('sessionsList');
@@ -524,81 +559,131 @@ async loadSessions() {
             </div>
         `;
     }
-updateSessionsList(availableSessions, confirmedSessions, meta = {}) {
-    const container = document.getElementById("sessionsList");
 
-    if (!availableSessions || availableSessions.length === 0) {
-        this.showEmptySessionsState();
-        return;
+    updateSessionsList(availableSessions, confirmedSessions, meta = {}) {
+        const container = document.getElementById("sessionsList");
+
+        if (!availableSessions || availableSessions.length === 0) {
+            this.showEmptySessionsState();
+            return;
+        }
+
+        const teacherName = meta.teacherName || "N/A";
+        const studentTimezone = meta.studentTimezone || "Asia/Kolkata";
+
+        container.innerHTML = `
+        <div class="session-list-container">
+            <div class="session-list-header">
+                <h3>Session List</h3>
+                <div class="session-list-info">
+                    <span>${availableSessions.length} Total Sessions</span>
+                </div>
+            </div>
+            <div class="sessions-list">
+                <div class="sessions-grid">
+                    ${availableSessions.map(session => this.createSessionCard(session)).join("")}
+                </div>
+            </div>
+        </div>`;
+
+        // Add event listeners for slot interactions
+        container.querySelectorAll(".slot-item.available").forEach(chip => {
+            chip.addEventListener("click", async () => {
+                const sessionId = chip.dataset.sessionId;
+                const startTimeUTC = chip.dataset.startUtc;
+                const endTimeUTC = chip.dataset.endUtc;
+                const startTime = chip.dataset.startTime;
+                const endTime = chip.dataset.endTime;
+                const title = chip.dataset.title;
+                const date = chip.dataset.date;
+
+                this.showBookingConfirmation(sessionId, startTimeUTC, endTimeUTC, startTime, endTime, title, date);
+            });
+        });
     }
 
-    // ✅ Teacher Name + Student Timezone (Top Right)
-    const teacherName = meta.teacherName || "N/A";
-    const studentTimezone = meta.studentTimezone || "Asia/Kolkata";
+    showBookingConfirmation(sessionId, startTimeUTC, endTimeUTC, startTime, endTime, title, date) {
+        // Remove any existing modal
+        const existingModal = document.getElementById('bookingModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
 
-    container.innerHTML = `
-        <div class="my-sessions-wrapper">
-
-            <div class="my-sessions-header" 
-                 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-
-                <div class="my-sessions-title">
-                    <i class="fas fa-calendar-alt"></i> My Sessions
+        // Create modal element
+        const modal = document.createElement('div');
+        modal.id = 'bookingModal';
+        modal.className = 'booking-modal';
+        modal.innerHTML = `
+            <div class="booking-modal-overlay">
+                <div class="booking-modal-content">
+                    <div class="booking-modal-header">
+                        <h3>Book Session Slot</h3>
+                        <button class="booking-modal-close" onclick="this.closest('.booking-modal').remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="booking-modal-body">
+                        <div class="booking-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Session:</span>
+                                <span class="detail-value">${title}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Date:</span>
+                                <span class="detail-value">${date}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Time:</span>
+                                <span class="detail-value">${startTime} - ${endTime}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="booking-modal-actions">
+                        <button class="booking-btn booking-btn-cancel" onclick="this.closest('.booking-modal').remove()">
+                            Cancel
+                        </button>
+                        <button class="booking-btn booking-btn-confirm" id="confirmBookingBtn">
+                            Confirm Booking
+                        </button>
+                    </div>
                 </div>
-
-                <!-- ✅ RIGHT SIDE META INFO -->
-                <div class="my-sessions-meta" 
-                     style="font-size:14px; color:#444; font-weight:500;">
-                    👩‍🏫 <b>${teacherName}</b> &nbsp; | &nbsp; 🌍 <b>${studentTimezone}</b>
-                </div>
-
             </div>
+        `;
 
-            <div class="my-sessions-grid">
-                ${availableSessions.map(session => this.createMySessionCard(session)).join("")}
-            </div>
+        document.body.appendChild(modal);
+        document.body.style.overflow = 'hidden';
 
-        </div>
-    `;
-
-    // ✅ Slot click listener (UTC booking)
-    container.querySelectorAll(".slot-chip").forEach(chip => {
-        chip.addEventListener("click", async () => {
-            if (chip.classList.contains("booked-slot")) return;
-
-            const sessionId = chip.dataset.sessionId;
-            const startTimeUTC = chip.dataset.startUtc;
-            const endTimeUTC = chip.dataset.endUtc;
-
-            const startTime = chip.dataset.startTime;
-            const endTime = chip.dataset.endTime;
-            const title = chip.dataset.title;
-            const date = chip.dataset.date;
-
-            const confirmed = confirm(
-                `Confirm Booking?\n\nSession: ${title}\nDate: ${date}\nTime: ${startTime} - ${endTime}`
-            );
-
-            if (!confirmed) return;
-
-            // ✅ UI instantly green
-            chip.classList.add("booked-slot");
+        // Add event listener for confirm button
+        document.getElementById('confirmBookingBtn').addEventListener('click', async () => {
+            const chip = document.querySelector(`.slot-item[data-session-id="${sessionId}"][data-start-utc="${startTimeUTC}"]`);
+            
+            if (chip) {
+                chip.classList.add('booked');
+            }
 
             try {
                 await this.bookSession(sessionId, startTimeUTC, endTimeUTC);
-
-                // ✅ refresh list after booking
+                modal.remove();
+                document.body.style.overflow = '';
                 await this.loadSessions();
-
             } catch (err) {
-                chip.classList.remove("booked-slot");
-                this.showMessage(err.message, "error");
+                if (chip) {
+                    chip.classList.remove('booked');
+                }
+                this.showMessage(err.message, 'error');
             }
         });
-    });
-}
 
-
+        // Close modal when clicking overlay
+        modal.querySelector('.booking-modal-overlay').addEventListener('click', (e) => {
+            if (e.target === modal.querySelector('.booking-modal-overlay')) {
+                modal.remove();
+                document.body.style.overflow = '';
+            }
+        });
+    }
 
     addSwipeSupport(element) {
         let startX = 0;
@@ -626,7 +711,7 @@ updateSessionsList(availableSessions, confirmedSessions, meta = {}) {
         const grid = document.getElementById('sessionsGrid');
         if (!grid) return;
 
-        const scrollAmount = 400; // Width of one card + gap
+        const scrollAmount = 400; 
         const currentScroll = grid.scrollLeft;
 
         if (direction === 'left') {
@@ -660,99 +745,128 @@ updateSessionsList(availableSessions, confirmedSessions, meta = {}) {
         nextBtn.disabled = grid.scrollLeft >= maxScroll;
     }
 
-createMySessionCard(session) {
-  const sessionType = session.sessionType || "common";
-  const isPersonal = sessionType === "personal";
+    createSessionCard(session) {
+        const sessionType = session.sessionType || "common";
+        const isPersonal = sessionType === "personal";
+        const slots = session.slots || [];
+        
+        // Calculate available and booked slots
+        const availableSlots = slots.filter(slot => !slot.isBooked);
+        const bookedSlots = slots.filter(slot => slot.isBooked);
+        
+        // Create slot items HTML
+        const slotItemsHTML = slots.map(slot => {
+            const isBooked = slot.isBooked;
+            const slotClass = isBooked ? "booked" : "available";
+            const studentName = slot.studentName || "";
+            
+            return `
+                <div class="slot-item ${slotClass}"
+                     data-session-id="${session.sessionId}"
+                     data-start-utc="${slot.startTimeUTC}"
+                     data-end-utc="${slot.endTimeUTC}"
+                     data-start-time="${slot.startTime}"
+                     data-end-time="${slot.endTime}"
+                     data-title="${session.title || 'SESSION'}"
+                     data-date="${session.date || ''}">
+                    ${slot.startTime} - ${slot.endTime}
+                    ${studentName ? `<div class="student-name">${studentName}</div>` : ''}
+                </div>
+            `;
+        }).join("");
+        
+        return `
+            <div class="session-card">
+                <div class="session-header">
+                    <h4 class="session-title">${session.title || 'SESSION'}</h4>
+                    <span class="session-type ${isPersonal ? 'personal' : 'common'}">
+                        ${isPersonal ? 'PERSONAL' : 'ALL STUDENTS'}
+                    </span>
+                </div>
+                
+                <div class="session-content">
+                    <div class="session-info">
+                        <i class="fas fa-calendar"></i>
+                        <span>${session.date || 'N/A'}</span>
+                    </div>
+                    <div class="session-info">
+                        <i class="fas fa-clock"></i>
+                        <span>${session.duration || 60} minutes</span>
+                    </div>
+                    ${isPersonal && session.teacherName ? `
+                        <div class="session-info">
+                            <i class="fas fa-user"></i>
+                            <span>${session.teacherName}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="session-slots">
+                    <div class="session-slots-header">Slots</div>
+                    
+                    <div class="slot-statistics">
+                        <div class="slot-stats-badges">
+                            <div class="slot-badge available">
+                                <div class="count">${availableSlots.length}</div>
+                                <div class="label">Available</div>
+                            </div>
+                            <div class="slot-badge booked">
+                                <div class="count">${bookedSlots.length}</div>
+                                <div class="label">Booked</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="my-slots-section">
+                        <div class="my-slots-header">MY SLOTS</div>
+                        <div class="slots-grid">
+                            ${slotItemsHTML || '<div class="empty">No slots available</div>'}
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        `;
+    }
 
-  const slots = session.slots || [];
+    updateMySessionsHeader(meta) {
+        const metaDiv = document.getElementById("mySessionsMetaInfo");
+        if (!metaDiv) return;
 
-  const slotChipsHTML = slots.map(slot => {
-    // ✅ booked slot green class
-    const bookedClass = slot.isBooked ? "booked-slot" : "";
+        const teacherName = meta.teacherName || "N/A";
+        const studentTimezone = meta.studentTimezone || "Asia/Kolkata";
 
-    return `
-      <div class="slot-chip ${bookedClass}"
-           data-session-id="${session.sessionId}"
-           data-start-time="${slot.startTime}"
-           data-end-time="${slot.endTime}"
-           data-start-utc="${slot.startTimeUTC}"
-           data-end-utc="${slot.endTimeUTC}"
-           data-title="${session.title || "SESSION"}"
-           data-date="${session.date || ""}">
-        ${slot.startTime} - ${slot.endTime}
-      </div>
-    `;
-  }).join("");
+        metaDiv.innerHTML = `
+    <span style="margin-right:14px; display:inline-flex; align-items:center; gap:6px;">
+        <i class="fas fa-user-tie"></i><b>${teacherName}</b>
+    </span>
+    <span style="display:inline-flex; align-items:center; gap:6px;">
+        <i class="fas fa-globe"></i><b>${studentTimezone}</b>
+    </span>`;
+    }
 
-  return `
-    <div class="my-session-card">
-      <div class="my-session-topbar ${isPersonal ? "green" : ""}"></div>
+    async bookSession(sessionId, startTimeUTC, endTimeUTC) {
+        try {
+            this.showLoading();
 
-      <div class="my-session-content">
-        <div class="my-session-title">${session.title || "SESSION"}</div>
+            const response = await this.apiRequest(`${this.sessionApiBaseUrl}/confirm`, {
+                method: "POST",
+                body: JSON.stringify({
+                    sessionId,
+                    startTimeUTC,
+                    endTimeUTC
+                })
+            });
 
-        <div class="session-badge ${isPersonal ? "personal" : "common"}">
-          <i class="fas fa-users"></i>
-          ${isPersonal ? "Personal Session" : "Common Session"}
-        </div>
+            this.showMessage("Slot booked successfully!", "success");
+            return response;
 
-        <div class="my-session-info">
-          <span><i class="fas fa-clock"></i> Duration: ${session.duration || 60} minutes</span>
-          <span><i class="fas fa-calendar"></i> ${session.date || ""}</span>
-        </div>
-
-        <div class="my-slots-title">
-          Slots (${slots.length})
-        </div>
-
-        <div class="my-slots-wrap">
-          ${slotChipsHTML || `<p class="empty">No slots available</p>`}
-        </div>
-      </div>
-    </div>
-  `;
-}
-updateMySessionsHeader(meta) {
-    const metaDiv = document.getElementById("mySessionsMetaInfo");
-    if (!metaDiv) return;
-
-    const teacherName = meta.teacherName || "N/A";
-    const studentTimezone = meta.studentTimezone || "Asia/Kolkata";
-
-    metaDiv.innerHTML = `
-        <span style="margin-right:12px;">
-            👩‍🏫 Teacher: <b>${teacherName}</b>
-        </span>
-        <span>
-            🌍 Timezone: <b>${studentTimezone}</b>
-        </span>
-    `;
-}
-
-
-async bookSession(sessionId, startTimeUTC, endTimeUTC) {
-  try {
-    this.showLoading();
-
-    const response = await this.apiRequest(`${this.sessionApiBaseUrl}/confirm`, {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId,
-        startTimeUTC,
-        endTimeUTC
-      })
-    });
-
-    this.showMessage("Slot booked successfully!", "success");
-    return response;
-
-  } catch (error) {
-    throw error;
-  } finally {
-    this.hideLoading();
-  }
-}
-
+        } catch (error) {
+            throw error;
+        } finally {
+            this.hideLoading();
+        }
+    }
 
     markSlotAsBooked(sessionId, startTime) {
         const chip = document.querySelector(
@@ -822,7 +936,6 @@ async bookSession(sessionId, startTimeUTC, endTimeUTC) {
         document.getElementById("confirmBookingBtn").addEventListener("click", async () => {
             closeModal();
 
-            // ✅ Must book using UTC (not HH:mm)
             await this.bookSession(sessionId, startTimeUTC, endTimeUTC);
         });
 

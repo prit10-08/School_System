@@ -1,6 +1,8 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const sendEmail = require("../utils/sendEmail");
+const emailTemplates = require("../config/emailTemplates");
 
 exports.signup = async (req, res) => {
   const { userId, name, email, password, city, state, country, role } = req.body;
@@ -41,6 +43,18 @@ exports.signup = async (req, res) => {
 
     const userResponse = user.toObject();
     delete userResponse.password;
+
+    setImmediate(async () => {
+      try {
+        await sendEmail({
+          to: email,
+          subject: emailTemplates.teacher_signup.subject,
+          html: emailTemplates.teacher_signup.html(name)
+        });
+      } catch (emailErr) {
+        console.error("Failed to send welcome email:", emailErr.message);
+      }
+    });
 
     return res.status(201).json({
       success: true,

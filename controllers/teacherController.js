@@ -6,6 +6,8 @@ const TeacherAvailability = require("../models/TeacherAvailability");
 const fs = require("fs");
 const csv = require("csv-parser");
 const bcrypt = require("bcryptjs");
+const sendEmail = require("../utils/sendEmail");
+const emailTemplates = require("../config/emailTemplates");
 
 exports.getTeacherStats = async (req, res) => {
   try {
@@ -84,7 +86,6 @@ exports.getStudentById = async (req, res) => {
   } 
   catch (err) 
   {
-    console.error('Get student by ID error:', err);
     return res.status(500).json({ 
       success: false,
       message: "Server error" 
@@ -93,9 +94,6 @@ exports.getStudentById = async (req, res) => {
 };
 exports.createStudent = async (req, res) => {
   const { userId, name, email, password, age, class: className, city, state, country, mobileNumber, role, timezone } = req.body;
-  
-  console.log('Request body:', req.body);
-  console.log('Received timezone:', timezone);
 
   try {
     const exists = await User.findOne({ $or: [{ userId }, { email }] });
@@ -122,9 +120,31 @@ exports.createStudent = async (req, res) => {
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
     };
     
-    console.log('Student data to be saved:', studentData);
-
     const student = await User.create(studentData);
+
+    // Send emails to both teacher and student (non-blocking)
+    // setImmediate(async () => {
+    //   try {
+    //     // Get teacher details
+    //     const teacher = await User.findById(req.user.id).select('name email');
+        
+    //     // Send email to teacher
+    //     await sendEmail({
+    //       to: teacher.email,
+    //       subject: emailTemplates.student_added.teacher.subject,
+    //       html: emailTemplates.student_added.teacher.html(teacher.name, name, email)
+    //     });
+        
+    //     // Send email to student
+    //     await sendEmail({
+    //       to: email,
+    //       subject: emailTemplates.student_added.student.subject,
+    //       html: emailTemplates.student_added.student.html(name, teacher.name)
+    //     });
+    //   } catch (emailErr) {
+    //     console.error("Failed to send student addition emails:", emailErr.message);
+    //   }
+    // });
 
     res.status(201).json({
       success: true,
@@ -132,7 +152,6 @@ exports.createStudent = async (req, res) => {
       data: student
     });
   } catch (err) {
-    console.error("Create student error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

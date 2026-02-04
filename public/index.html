@@ -3,59 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>School System - Login</title>
+    <title>Login - School System</title>
     <link rel="stylesheet" href="/css/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <div class="container">
-        <div class="auth-container">
-            <!-- Header -->
-            <div class="auth-header">
-                <h1 class="auth-title">Welcome Back</h1>
-                <p class="auth-subtitle">Sign in to your account</p>
+    <div class="login-container">
+        <div class="login-card">
+            <!-- Simple Header -->
+            <div class="login-header">
+                <h1 class="login-title">Welcome Back</h1>
+                <p class="login-subtitle">Sign in to your account</p>
             </div>
 
             <!-- Login Form -->
-            <div class="form-content">
-                <form class="auth-form" id="login-form">
-                    <div class="form-group">
-                        <label for="login-email">Email</label>
-                        <input type="email" id="login-email" name="email" placeholder="Enter your email" required>
-                        <span class="error-message"></span>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="login-password">Password</label>
-                        <div class="password-input">
-                            <input type="password" id="login-password" name="password" placeholder="Enter your password" required>
-                            <button type="button" class="toggle-password" data-target="login-password">
-                                <span class="eye-icon">👁️</span>
-                            </button>
-                        </div>
-                        <span class="error-message"></span>
-                    </div>
-
-                    <button type="submit" class="auth-btn">Sign In</button>
-                </form>
-
-                <!-- Page Link -->
-                <div class="page-link">
-                    <p>Don't have an account? <a href="/signup.html">Sign Up</a></p>
+            <form class="login-form" id="login-form">
+                <div class="form-field">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" name="email" placeholder="Enter your email" required>
                 </div>
-            </div>
 
-            <!-- Loading Spinner -->
-            <div class="loading-spinner" id="loading">
-                <div class="spinner"></div>
-                <p>Signing in...</p>
-            </div>
+                <div class="form-field">
+                    <label for="login-password">Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="login-password" name="password" placeholder="Enter your password" required>
+                        <button type="button" class="toggle-password" onclick="togglePassword()">
+                            <i class="far fa-eye" id="eye-icon"></i>
+                        </button>
+                    </div>
+                </div>
 
-            <!-- Success/Error Messages -->
-            <div class="message-container" id="message-container"></div>
+                <button type="submit" class="login-btn">Sign In</button>
+            </form>
+
+            <!-- Simple Link -->
+            <div class="login-link">
+                <p>Don't have an account? <a href="/signup.html">Sign Up</a></p>
+            </div>
         </div>
     </div>
 
     <script src="/js/auth.js"></script>
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('login-password');
+            const eyeIcon = document.getElementById('eye-icon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.classList.remove('far', 'fa-eye');
+                eyeIcon.classList.add('fas', 'fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.classList.remove('fas', 'fa-eye-slash');
+                eyeIcon.classList.add('far', 'fa-eye');
+            }
+        }
+    </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ exports.setWeeklyAvailability = async (req, res) => {
     const teacherId = req.user.id;
     const { weeklyAvailability } = req.body;
 
+    // ✅ Directly store only days with times - no processing needed
     const availability = await TeacherAvailability.findOneAndUpdate(
       { teacherId },
       { $set: { weeklyAvailability } },
@@ -118,6 +119,7 @@ exports.getTeacherAvailability = async (req, res) => {
             });
         }
 
+        // ✅ Return only days with times (as stored)
         res.json({
             success: true,
             weeklyAvailability: availability.weeklyAvailability || []

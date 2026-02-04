@@ -24,53 +24,70 @@
 
             <div class="content">
                 <!-- Dashboard Page -->
-                <div class="page active" id="dashboard-page">
-                    <div class="stats">
-                        <div class="stat-card">
-                            <div class="stat-icon blue">
-                                <i class="fas fa-calendar-check"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>Booked Sessions</h3>
-                                <p class="stat-number" id="bookedSessions">0</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon green">
-                                <i class="fas fa-calendar-alt"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>Total Sessions</h3>
-                                <p class="stat-number" id="totalSessions">0</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon orange">
-                                <i class="fas fa-question-circle"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>Total Quizzes</h3>
-                                <p class="stat-number" id="totalQuizzes">0</p>
-                            </div>
-                        </div>
-                    </div>
+              <div class="page active" id="dashboard-page">
 
-                    <div class="cards">
-                    <div class="card">
-                        <h3>Recent Sessions</h3>
-                        <div id="recentSessions">
-                            <p class="empty">No sessions available yet</p>
-                        </div>
-                    </div>
+    <!-- Stats Cards (Teacher style) -->
+    <div class="stats-grid">
 
-                        <div class="card">
-                            <h3>Available Quizzes</h3>
-                            <div id="availableQuizzes">
-                                <p class="empty">No quizzes available</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="stat-card common-container">
+            <div class="stat-icon blue">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Booked Slots</h3>
+                <p class="stat-number" id="bookedSessions">0</p>
+            </div>
+        </div>
+
+        <div class="stat-card common-container">
+            <div class="stat-icon green">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Total Sessions</h3>
+                <p class="stat-number" id="totalSessions">0</p>
+            </div>
+        </div>
+
+        <div class="stat-card common-container">
+            <div class="stat-icon orange">
+                <i class="fas fa-question-circle"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Total Quizzes</h3>
+                <p class="stat-number" id="totalQuizzes">0</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Dashboard Cards Grid (Teacher style) -->
+    <div class="dashboard-grid">
+
+        <!-- Recent Sessions -->
+        <div class="dashboard-card common-container">
+            <div class="card-header">
+                <h3>Recent Sessions</h3>
+            </div>
+            <div class="card-content" id="recentSessions">
+                <p class="empty">No sessions available yet</p>
+            </div>
+        </div>
+
+        <!-- Available Quizzes -->
+        <div class="dashboard-card common-container">
+            <div class="card-header">
+                <h3>Available Quizzes</h3>
+            </div>
+            <div class="card-content" id="availableQuizzes">
+                <p class="empty">No quizzes available</p>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
 
                 <!-- Quizzes Page -->
                 <div class="page" id="quiz-page">
@@ -182,28 +199,51 @@
                 </div>
 
                 <!-- Quiz Taking Modal -->
-                <div class="modal" id="quizModal">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3 id="quizTitle">Quiz Title</h3>
-                            <div class="quiz-timer">
-                                <i class="fas fa-clock"></i>
-                                <span id="timeRemaining">00:00</span>
-                            </div>
-                            <button class="modal-close" id="closeQuizModal">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="quiz-info">
-                                <p><strong>Subject:</strong> <span id="quizSubject"></span></p>
-                                <p><strong>Duration:</strong> <span id="quizDuration"></span> minutes</p>
-                            </div>
-                            <form id="quizForm">
-                                <div id="questionsContainer"></div>
-                                <button type="submit" class="btn-primary">Submit Quiz</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
+                <div id="quizModal" class="modal">
+  <div class="modal-content">
+
+    <div class="modal-header">
+      <div class="modal-title">
+        <h3 id="quizTitle">Quiz</h3>
+      </div>
+
+      <div class="modal-header-right">
+        <span id="timeRemaining">00:00</span>
+        <button class="modal-close" id="closeQuizModal">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="quiz-info-box">
+        <div class="quiz-info-badge">
+          <i class="fas fa-book"></i>
+          <span>Subject: <b id="quizSubject">-</b></span>
+        </div>
+
+        <div class="quiz-info-badge">
+          <i class="fas fa-clock"></i>
+          <span>Duration: <b id="quizDuration">-</b> minutes</span>
+        </div>
+      </div>
+
+      <form id="quizForm">
+        <div id="questionsContainer"></div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn-submit-quiz">
+            Submit Quiz
+          </button>
+        </div>
+      </form>
+
+    </div>
+
+  </div>
+</div>
+
 
                 <!-- Edit Profile Modal -->
                 <div class="modal" id="editProfileModal">

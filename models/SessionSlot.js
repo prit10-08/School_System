@@ -13,6 +13,10 @@ const BookedSlotSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true
+  },
+  bookedByTeacher: {
+    type: Boolean,
+    default: false
   }
 });
 

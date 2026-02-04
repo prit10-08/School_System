@@ -78,7 +78,7 @@ const generateAvailableSlots = async (
     await setCache(teacherRedisKey, baseSlots);
   }
 
-  // ✅ 3) remove booked slots runtime
+  // ✅ 3) remove booked slots runtime (but keep slots booked by current student)
   const availableSlots = baseSlots.filter(slot => {
     const startTeacher = moment.tz(
       `${redisDate} ${slot.startTime}`,
@@ -95,12 +95,15 @@ const generateAvailableSlots = async (
     const slotStartUTC = startTeacher.clone().utc();
     const slotEndUTC = endTeacher.clone().utc();
 
-    const isBooked = (bookedSlots || []).some(b => {
-      return slotStartUTC.isBefore(moment(b.endTime)) &&
-             slotEndUTC.isAfter(moment(b.startTime));
+    // Check if slot is booked by another student
+    const isBookedByOtherStudent = (bookedSlots || []).some(b => {
+      const isOverlap = slotStartUTC.isBefore(moment(b.endTime)) &&
+                       slotEndUTC.isAfter(moment(b.startTime));
+      // If there's an overlap and it's not booked by the current student, exclude it
+      return isOverlap && String(b.bookedBy) !== String(studentId);
     });
 
-    return !isBooked;
+    return !isBookedByOtherStudent;
   });
 
   // ✅ 4) convert output timezone + add UTC values
@@ -120,8 +123,8 @@ const generateAvailableSlots = async (
     return {
       startTime: startTeacher.clone().tz(outputTimezone).format("HH:mm"),
       endTime: endTeacher.clone().tz(outputTimezone).format("HH:mm"),
-      startTimeUTC: startTeacher.clone().utc().toISOString(),
-      endTimeUTC: endTeacher.clone().utc().toISOString()
+      startTimeUTC: startTeacher.clone().utc().startOf('minute').toISOString(),
+      endTimeUTC: endTeacher.clone().utc().startOf('minute').toISOString()
     };
   });
 

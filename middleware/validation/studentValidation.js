@@ -8,9 +8,14 @@ const studentCreate = [
   body('email').isEmail().withMessage('email must be valid'),
   body('password').isLength({ min: 6 }).withMessage('password min length is 6'),
   body('age').notEmpty().isInt({ min: 1 }).withMessage('age is required and must be positive integer'),
-  body('class').optional().trim(),
-  body('timezone').trim().notEmpty().withMessage('timezone is required')
+  body('class').optional().trim().notEmpty().withMessage('class cannot be empty'),
+  body('timezone').trim().notEmpty().withMessage('timezone is required'),
+  body('mobileNumber').trim().notEmpty().withMessage('mobileNumber is required'),
+  body('city').trim().notEmpty().withMessage('city is required'),
+  body('state').trim().notEmpty().withMessage('state is required'),
+  body('country').trim().notEmpty().withMessage('country is required'),
 ];
+ 
 
 const studentUpdate = [
   body('name').optional().trim().notEmpty().withMessage('name cannot be empty'),
@@ -39,15 +44,17 @@ const markUpdate = [
 
 
 const submitQuizValidation = [
+  param("id")
+    .isMongoId()
+    .withMessage("Invalid quiz id"),
+
   body("answers")
     .isArray({ min: 1 })
-    .withMessage("Answers are required"),
+    .withMessage("answers must be a non-empty array"),
 
   body("answers.*")
-    .notEmpty()
-    .withMessage("Each question must be answered")
-    .isIn(["a", "b", "c", "d"])
-    .withMessage("Answer must be one of a, b, c, d")
+    .isInt({ min: 0, max: 3 })
+    .withMessage("Each answer must be a number between 0 and 3")
 ];
 const validate = (req, res, next) => {
   const errors = validationResult(req);

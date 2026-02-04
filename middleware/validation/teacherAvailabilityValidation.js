@@ -4,15 +4,17 @@ exports.validateWeeklyAvailability = (req, res, next) => {
   const { weeklyAvailability } = req.body;
   const errors = [];
 
-  if (!Array.isArray(weeklyAvailability) || weeklyAvailability.length === 0) {
+  // ✅ Allow empty array (all days "Not set")
+  if (!Array.isArray(weeklyAvailability)) {
     return res.status(400).json({
-      errors: ["weeklyAvailability is required"]
+      errors: ["weeklyAvailability must be an array"]
     });
   }
 
   // NOTE: If you only want Monday-Saturday, remove Sunday
-  const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
+  // ✅ Validate only days that have times (sent in payload)
   weeklyAvailability.forEach((slot, index) => {
     const { day, startTime, endTime } = slot;
 
@@ -21,7 +23,7 @@ exports.validateWeeklyAvailability = (req, res, next) => {
       return;
     }
 
-    // Validate startTime format
+    // Validate startTime format (HH:mm)
     try {
       parseTimeToMinutes(startTime);
     } catch (e) {
@@ -29,7 +31,7 @@ exports.validateWeeklyAvailability = (req, res, next) => {
       return;
     }
 
-    // Validate endTime format
+    // Validate endTime format (HH:mm)
     try {
       parseTimeToMinutes(endTime);
     } catch (e) {
@@ -37,12 +39,7 @@ exports.validateWeeklyAvailability = (req, res, next) => {
       return;
     }
 
-    // ✅ Allow 00:00 - 00:00 as "Not Set / Cleared Day"
-    if (startTime === "00:00" && endTime === "00:00") {
-      return;
-    }
-
-    // ✅ Normal availability rule: startTime must be before endTime
+    // ✅ Validate only: startTime < endTime
     try {
       const start = parseTimeToMinutes(startTime);
       const end = parseTimeToMinutes(endTime);

@@ -72,6 +72,11 @@ exports.createSessionSlotsValidation = [
       return true;
     }),
 
+  body("studentSelectionType")
+    .optional()
+    .isIn(["all", "particular"])
+    .withMessage("Student selection type must be 'all' or 'particular'"),
+
   body("student_id")
     .optional()
     .isMongoId()

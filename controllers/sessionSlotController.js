@@ -4,30 +4,47 @@ const SessionSlot = require("../models/SessionSlot");
 const TeacherAvailability = require("../models/TeacherAvailability");
 const User = require("../models/User");
 const generateAvailableSlots = require("../utils/generateAvailableSlots");
+const sendEmail = require("../utils/sendEmail");
+const emailTemplates = require("../config/emailTemplates");
+
 
 exports.createSessionSlots = async (req, res) => {
   try {
-    const { title, date, sessionDuration, breakDuration, student_id } = req.body;
+    const {
+      title,
+      date,
+      sessionDuration,
+      breakDuration,
+      studentSelectionType,
+      student_id
+    } = req.body;
 
-    // Input sanitization
-    const sanitizedTitle = title?.trim().replace(/[<>]/g, '');
     const teacherId = req.user.id;
     const teacherTimezone = req.user.timezone || "Asia/Kolkata";
 
-    // Validate date format and parse
-    const parsedDate = moment(date, "DD-MM-YYYY").startOf("day").toDate();
-    if (!parsedDate || isNaN(parsedDate.getTime())) {
+    if (!title || !date) {
       return res.status(400).json({
         success: false,
-        message: "Invalid date format. Please use DD-MM-YYYY format"
+        message: "Title and date are required"
       });
     }
 
-    // Check for duplicate session
+    const sanitizedTitle = title.trim().replace(/[<>]/g, "");
+    const parsedDate = moment(date, "DD-MM-YYYY", true);
+
+    if (!parsedDate.isValid()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Use DD-MM-YYYY"
+      });
+    }
+
+    const sessionDate = parsedDate.startOf("day").toDate();
+
     const duplicateSession = await SessionSlot.findOne({
       teacherId,
       title: sanitizedTitle,
-      date: parsedDate
+      date: sessionDate
     });
 
     if (duplicateSession) {
@@ -37,7 +54,6 @@ exports.createSessionSlots = async (req, res) => {
       });
     }
 
-    // Check teacher availability
     const availability = await TeacherAvailability.findOne({ teacherId });
     if (!availability) {
       return res.status(400).json({
@@ -46,9 +62,13 @@ exports.createSessionSlots = async (req, res) => {
       });
     }
 
-    // Check if date is a holiday
-    const isHoliday = availability.holidays.some(
-      h => parsedDate >= new Date(h.startDate) && parsedDate <= new Date(h.endDate)
+    const isHoliday = availability.holidays.some(h =>
+      parsedDate.isBetween(
+        moment(h.startDate).startOf("day"),
+        moment(h.endDate).endOf("day"),
+        null,
+        "[]"
+      )
     );
 
     if (isHoliday) {
@@ -58,102 +78,140 @@ exports.createSessionSlots = async (req, res) => {
       });
     }
 
-    // Check day availability
-    const day = moment(parsedDate).format("dddd").toLowerCase();
+    const dayOfWeek = parsedDate.format("dddd").toLowerCase();
     const dayAvailability = availability.weeklyAvailability.find(
-      d => d.day === day
+      d => d.day.toLowerCase() === dayOfWeek
     );
 
-    if (!dayAvailability || !dayAvailability.startTime || !dayAvailability.endTime) {
+    if (
+      !dayAvailability ||
+      !dayAvailability.startTime ||
+      !dayAvailability.endTime ||
+      (dayAvailability.startTime === "00:00" &&
+        dayAvailability.endTime === "00:00")
+    ) {
       return res.status(400).json({
         success: false,
-        message: `Teacher is not available on ${day}`
+        message: `Teacher is not available on ${parsedDate.format("dddd")}`
       });
     }
 
-    // Validate student if provided
+    /* Student validation */
     let allowedStudentId = null;
-    if (student_id) {
-      const student = await User.findOne({
+    let selectedStudent = null;
+
+    if (studentSelectionType === "particular" && student_id) {
+      selectedStudent = await User.findOne({
         _id: student_id,
         teacherId
       });
 
-      if (!student) {
+      if (!selectedStudent) {
         return res.status(403).json({
           success: false,
           message: "Invalid student for this teacher"
         });
       }
-      allowedStudentId = student._id;
+
+      allowedStudentId = selectedStudent._id;
     }
 
-    // Check for existing session on same date
+    /* Prevent duplicate personal/common session */
     const existingSession = await SessionSlot.findOne({
       teacherId,
-      date: parsedDate
+      date: sessionDate,
+      allowedStudentId: studentSelectionType === "particular" ? student_id : null
     });
 
     if (existingSession) {
       return res.status(409).json({
         success: false,
-        message: "Session slots already created for this date"
+        message: "Session already exists for this date"
       });
     }
 
-    // Create session
+    /* Create session */
     const session = await SessionSlot.create({
       teacherId,
       title: sanitizedTitle,
-      date: parsedDate,
-      sessionDuration: Math.max(15, Math.min(240, parseInt(sessionDuration) || 60)),
-      breakDuration: Math.max(0, Math.min(60, parseInt(breakDuration) || 10)),
+      date: sessionDate,
+      sessionDuration: Math.max(15, Math.min(240, Number(sessionDuration) || 60)),
+      breakDuration: Math.max(0, Math.min(60, Number(breakDuration) || 10)),
       allowedStudentId
     });
 
-    // Generate available slots
+    /* Generate slots */
     const slots = await generateAvailableSlots(
       {
-        date: parsedDate,
+        date: sessionDate,
         availability: dayAvailability,
         sessionId: session._id,
         teacherId
       },
       {
         Duration: session.sessionDuration,
-        breakDuration,
+        breakDuration: session.breakDuration,
         teacherTimezone
       },
       []
     );
 
-    // Clear relevant cache with pattern matching for better invalidation
-    if (redisClient?.isOpen) {
-      const cachePattern = `teacher:${teacherId}:sessions:*`;
-      const keys = await redisClient.keys(cachePattern);
-      if (keys && keys.length > 0) {
-        await redisClient.del(keys);
-      }
+    if (!slots.length) {
+      await SessionSlot.findByIdAndDelete(session._id);
+      return res.status(400).json({
+        success: false,
+        message: "No slots can be generated within availability"
+      });
     }
 
+    /* Cache clear */
+    if (redisClient?.isOpen) {
+      const keys = await redisClient.keys(`teacher:${teacherId}:sessions:*`);
+      if (keys.length) await redisClient.del(keys);
+    }
+
+    /* 📧 SEND EMAIL (ONLY FOR PERSONAL SESSION) */
+    // if (selectedStudent) {
+    //   setImmediate(async () => {
+    //     try {
+    //       await sendEmail({
+    //         to: selectedStudent.email,
+    //         subject: emailTemplates.personal_session_created.subject,
+    //         html: emailTemplates.personal_session_created.html(
+    //           selectedStudent.name,
+    //           sanitizedTitle,
+    //           parsedDate.format("DD-MM-YYYY"),
+    //           session.sessionDuration,
+    //           slots.length
+    //         )
+    //       });
+    //     } catch (mailErr) {
+    //       console.error("Mailtrap email failed:", mailErr.message);
+    //     }
+    //   });
+    // }
+
+    /* Success */
     return res.status(201).json({
       success: true,
       message: "Session slots created successfully",
       data: {
         sessionId: session._id,
         title: session.title,
-        date: moment(session.date).format("DD-MM-YYYY"),
-        day: moment(session.date).format("dddd"),
+        date: parsedDate.format("DD-MM-YYYY"),
+        day: parsedDate.format("dddd"),
+        sessionType: allowedStudentId ? "personal" : "common",
         sessionDuration: session.sessionDuration,
         breakDuration: session.breakDuration,
         totalSlots: slots.length,
-        slots
+        slots,
+        bookedSlots: []
       }
     });
 
   } catch (err) {
-    console.error('Error in createSessionSlots:', err);
-    res.status(500).json({
+    console.error("createSessionSlots error:", err);
+    return res.status(500).json({
       success: false,
       message: "Internal server error while creating session slots"
     });
@@ -218,14 +276,20 @@ exports.getMySessionSlots = async (req, res) => {
       // ✅ 2) My booked slots (same position ma show karva mate slots array ma merge karvana)
       const myBookedSlots = (session.bookedSlots || [])
         .filter(b => String(b.bookedBy) === String(student._id))
-        .map(b => ({
-          startTime: moment(b.startTime).tz(studentTimezone).format("HH:mm"),
-          endTime: moment(b.endTime).tz(studentTimezone).format("HH:mm"),
-          startTimeUTC: moment(b.startTime).utc().toISOString(),
-          endTimeUTC: moment(b.endTime).utc().toISOString(),
-          isBooked: true,
-          isBookedByMe: true
-        }));
+        .map(b => {
+          // Normalize to start of minute to ensure consistency with available slots
+          const startTimeUTC = moment(b.startTime).utc().startOf('minute').toISOString();
+          const endTimeUTC = moment(b.endTime).utc().startOf('minute').toISOString();
+          
+          return {
+            startTime: moment(b.startTime).tz(studentTimezone).format("HH:mm"),
+            endTime: moment(b.endTime).tz(studentTimezone).format("HH:mm"),
+            startTimeUTC: startTimeUTC,
+            endTimeUTC: endTimeUTC,
+            isBooked: true,
+            isBookedByMe: true
+          };
+        });
 
       // ✅ 3) Remove past slots (student timezone)
       const nowStudent = moment().tz(studentTimezone);
@@ -235,14 +299,20 @@ exports.getMySessionSlots = async (req, res) => {
           const slotStartStudent = moment.utc(slot.startTimeUTC).tz(studentTimezone);
           return slotStartStudent.isAfter(nowStudent);
         })
-        .map(slot => ({
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          startTimeUTC: slot.startTimeUTC,
-          endTimeUTC: slot.endTimeUTC,
-          isBooked: false,
-          isBookedByMe: false
-        }));
+        .map(slot => {
+          // Normalize to start of minute to ensure consistency with booked slots
+          const startTimeUTC = moment.utc(slot.startTimeUTC).startOf('minute').toISOString();
+          const endTimeUTC = moment.utc(slot.endTimeUTC).startOf('minute').toISOString();
+          
+          return {
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            startTimeUTC: startTimeUTC,
+            endTimeUTC: endTimeUTC,
+            isBooked: false,
+            isBookedByMe: false
+          };
+        });
 
       // ✅ 4) Merge both in ONE ARRAY (same place, no extra row)
       const finalMap = new Map();
@@ -273,16 +343,16 @@ exports.getMySessionSlots = async (req, res) => {
       });
     }
 
-return res.json({
-  pagination: { page: 1, limit: 10, count: response.length },
+    return res.json({
+      pagination: { page: 1, limit: 10, count: response.length },
 
-  meta: {
-    teacherName: teacher.name,
-    studentTimezone: studentTimezone
-  },
+      meta: {
+        teacherName: teacher.name,
+        studentTimezone: studentTimezone
+      },
 
-  sessions: response
-});
+      sessions: response
+    });
 
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -367,12 +437,12 @@ exports.confirmSessionSlot = async (req, res) => {
     // ✅ Clear caches
     if (redisClient?.isOpen) {
       const keys = [
-  ...(await redisClient.keys(`slots:teacher:${session.teacherId}:${session._id}:*`)),
-  ...(await redisClient.keys(`slots:student:*:${session._id}:*`)),
-  ...(await redisClient.keys(`slots:student:${studentId}:${session._id}:*`)),
-  ...(await redisClient.keys(`teacher:${session.teacherId}:sessions:*`)),
-  ...(await redisClient.keys(`student:${studentId}:sessions:*`))
-];
+        ...(await redisClient.keys(`slots:teacher:${session.teacherId}:${session._id}:*`)),
+        ...(await redisClient.keys(`slots:student:*:${session._id}:*`)),
+        ...(await redisClient.keys(`slots:student:${studentId}:${session._id}:*`)),
+        ...(await redisClient.keys(`teacher:${session.teacherId}:sessions:*`)),
+        ...(await redisClient.keys(`student:${studentId}:sessions:*`))
+      ];
 
 
       if (keys.length > 0) await redisClient.del(keys);
@@ -542,7 +612,10 @@ exports.getTeacherSessions = async (req, res) => {
         const bookedSlots = (s.bookedSlots || []).map(b => ({
           startTime: moment(b.startTime).tz(teacherTZ).format("HH:mm"),
           endTime: moment(b.endTime).tz(teacherTZ).format("HH:mm"),
+          startUTC: moment(b.startTime).utc().toISOString(),
+          endUTC: moment(b.endTime).utc().toISOString(),
           bookedBy: b.bookedBy,
+          bookedByTeacher: b.bookedByTeacher || false,
           studentName: b.bookedBy?.name || 'Unknown'
         }));
 
@@ -554,10 +627,13 @@ exports.getTeacherSessions = async (req, res) => {
           title: s.title,
           date: moment(s.date).tz(teacherTZ).format("DD-MM-YYYY"),
           day: moment(s.date).tz(teacherTZ).format("dddd"),
-
+          sessionType: s.allowedStudentId ? "personal" : "common",
           sessionDuration: s.sessionDuration,
           breakDuration: s.breakDuration,
-          allowedStudent: { name: s.allowedStudentId?.name || 'Unknown' },
+          allowedStudent: {
+            _id: s.allowedStudentId?._id,
+            name: s.allowedStudentId?.name || 'Unknown'
+          },
 
           totalSlots,
           slots: availableSlots, // available
@@ -586,4 +662,278 @@ exports.getTeacherSessions = async (req, res) => {
   }
 };
 
+exports.assignSlotByTeacher = async (req, res) => {
+  let lockKey;
 
+  try {
+    const teacherId = req.user.id;
+    const teacherTimezone = req.user.timezone || "Asia/Kolkata";
+    const teacherName = req.user.name;
+    const {
+      sessionId,
+      studentId,
+      date,
+      startTime,
+      endTime
+    } = req.body;
+
+    if (!sessionId || !studentId || !date || !startTime || !endTime) {
+      return res.status(400).json({
+        message: "sessionId, studentId, date, startTime, endTime are required"
+      });
+    }
+
+    // 🔐 Validate student belongs to teacher
+    const student = await User.findOne({
+      _id: studentId,
+      teacherId
+    });
+
+    if (!student) {
+      return res.status(403).json({
+        message: "Invalid student for this teacher"
+      });
+    }
+
+    const session = await SessionSlot.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    if (String(session.teacherId) !== String(teacherId)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    // 🔐 Personal session validation
+    if (
+      session.allowedStudentId &&
+      String(session.allowedStudentId) !== String(studentId)
+    ) {
+      return res.status(403).json({
+        message: "This session is restricted to another student"
+      });
+    }
+
+    // 🕒 Convert TEACHER LOCAL TIME → UTC
+    const startUTC = moment.tz(
+      `${date} ${startTime}`,
+      "DD-MM-YYYY HH:mm",
+      teacherTimezone
+    ).utc();
+
+    const endUTC = moment.tz(
+      `${date} ${endTime}`,
+      "DD-MM-YYYY HH:mm",
+      teacherTimezone
+    ).utc();
+
+    if (!startUTC.isValid() || !endUTC.isValid()) {
+      return res.status(400).json({ message: "Invalid date or time format" });
+    }
+
+    if (!endUTC.isAfter(startUTC)) {
+      return res.status(400).json({
+        message: "End time must be after start time"
+      });
+    }
+
+    // 🔒 Redis lock
+    lockKey = `lock:teacher:${teacherId}:session:${sessionId}:slot:${startUTC.toISOString()}`;
+
+    if (redisClient?.isOpen) {
+      const lock = await redisClient.set(lockKey, "locked", {
+        NX: true,
+        EX: 10
+      });
+
+      if (!lock) {
+        return res.status(409).json({
+          message: "Slot is being processed. Try again."
+        });
+      }
+    }
+
+    // ❌ Prevent overlap
+    const overlap = (session.bookedSlots || []).some(b =>
+      startUTC.isBefore(moment(b.endTime)) &&
+      endUTC.isAfter(moment(b.startTime))
+    );
+
+    if (overlap) {
+      return res.status(400).json({ message: "Slot already booked" });
+    }
+
+    // ✅ BOOK SLOT (UTC STORE)
+    session.bookedSlots.push({
+      startTime: startUTC.toDate(),
+      endTime: endUTC.toDate(),
+      bookedBy: studentId,
+      bookedByTeacher: true
+    });
+
+    await session.save();
+
+    // 🧹 Clear cache
+    if (redisClient?.isOpen) {
+      const keys = await redisClient.keys(`*${sessionId}*`);
+      if (keys.length) await redisClient.del(keys);
+    }
+    
+    return res.json({
+      success: true,
+      message: "Slot assigned successfully",
+      data: {
+        sessionId,
+        studentId,
+        startTimeUTC: startUTC.toISOString(),
+        endTimeUTC: endUTC.toISOString()
+      }
+    });
+
+  } catch (err) {
+    console.error("assignSlotByTeacher error:", err);
+    return res.status(500).json({ message: err.message });
+  } finally {
+    if (redisClient?.isOpen && lockKey) {
+      await redisClient.del(lockKey);
+    }
+  }
+};
+
+exports.cancelAssignedSlot = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { sessionId, startTimeUTC, endTimeUTC } = req.body;
+
+    if (!sessionId || !startTimeUTC || !endTimeUTC) {
+      return res.status(400).json({
+        success: false,
+        message: "sessionId, startTimeUTC, endTimeUTC are required"
+      });
+    }
+
+    const session = await SessionSlot.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Session not found"
+      });
+    }
+
+    // 🔐 Teacher ownership check
+    if (String(session.teacherId) !== String(teacherId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not allowed to modify this session"
+      });
+    }
+
+    const startUTC = moment.utc(startTimeUTC);
+    const endUTC = moment.utc(endTimeUTC);
+
+    if (!startUTC.isValid() || !endUTC.isValid()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid UTC time format"
+      });
+    }
+
+    // 🔍 Find the specific booked slot
+    const bookedSlotIndex = (session.bookedSlots || []).findIndex(b =>
+      moment.utc(b.startTime).isSame(startUTC) &&
+      moment.utc(b.endTime).isSame(endUTC)
+    );
+
+    if (bookedSlotIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Booked slot not found"
+      });
+    }
+
+    const bookedSlot = session.bookedSlots[bookedSlotIndex];
+
+    // ❌ STRICT RULE: Check if this slot was assigned by teacher
+    // Only slots with bookedByTeacher: true can be cancelled by teacher
+    if (!bookedSlot.bookedByTeacher) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot cancel slots booked directly by students"
+      });
+    }
+
+    // ✅ Remove the booked slot
+    session.bookedSlots.splice(bookedSlotIndex, 1);
+    await session.save();
+
+    // 🧹 Clear relevant caches
+    if (redisClient?.isOpen) {
+      const keys = [
+        ...(await redisClient.keys(`teacher:${teacherId}:sessions:*`)),
+        ...(await redisClient.keys(`slots:teacher:${teacherId}:${sessionId}:*`)),
+        ...(await redisClient.keys(`slots:student:*:${sessionId}:*`)),
+        ...(await redisClient.keys(`student:${bookedSlot.bookedBy}:sessions:*`))
+      ];
+      if (keys.length > 0) await redisClient.del(keys);
+    }
+
+    return res.json({
+      success: true,
+      message: "Teacher-assigned slot cancelled successfully",
+      data: {
+        sessionId,
+        startTimeUTC: startUTC.toISOString(),
+        endTimeUTC: endUTC.toISOString(),
+        cancelledStudentId: bookedSlot.bookedBy
+      }
+    });
+
+  } catch (err) {
+    console.error("cancelTeacherAssignedSlot error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while cancelling slot"
+    });
+  }
+};
+
+exports.deleteSessionByTeacher = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({ message: "SessionId is required" });
+    }
+
+    const session = await SessionSlot.findById(sessionId);
+
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    // 🔐 ownership check
+    if (String(session.teacherId) !== String(teacherId)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    // ❌ prevent delete if slots already booked
+    if (session.bookedSlots && session.bookedSlots.length > 0) {
+      return res.status(400).json({
+        message: "Cannot delete session with booked slots"
+      });
+    }
+
+    await SessionSlot.findByIdAndDelete(sessionId);
+
+    return res.json({
+      success: true,
+      message: "Session deleted successfully",
+      sessionId
+    });
+
+  } catch (err) {
+    console.error("deleteSessionByTeacher error:", err);
+    return res.status(500).json({ message: err.message });
+  }
+};
