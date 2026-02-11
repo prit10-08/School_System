@@ -12,10 +12,10 @@ const QuestionSchema = new mongoose.Schema({
     validate: v => v.length === 4
   },
   correctOption: {
-  type: String,
-  enum: ["a", "b", "c", "d"],
-  required: true
-}
+    type: String,
+    enum: ["a", "b", "c", "d"],
+    required: true
+  }
 
 });
 
@@ -31,7 +31,21 @@ const QuizSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-  teacherId: {
+    class: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    startTime: {
+      type: Date
+    },
+    endTime: {
+      type: Date
+    },
+    duration: {
+      type: Number
+    },
+    teacherId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,

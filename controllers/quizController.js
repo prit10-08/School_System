@@ -3,14 +3,21 @@ const User = require("../models/User");
 exports.createQuiz = async (req, res) => {
   try {
 
-    
-    const { title, subject, questions } = req.body;
+
+    const { title, subject, class: studentClass, questions, startTime, endTime, duration } = req.body;
 
     if (!questions || questions.length === 0) {
       console.log('Validation failed: No questions');
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Questions are required" 
+        message: "Questions are required"
+      });
+    }
+
+    if (!studentClass) {
+      return res.status(400).json({
+        success: false,
+        message: "Class is required"
       });
     }
 
@@ -18,8 +25,13 @@ exports.createQuiz = async (req, res) => {
     const quiz = await Quiz.create({
       title,
       subject,
+      class: studentClass,
       questions,
       totalMarks: questions.length,
+      itemOffset: 0,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      duration: duration || null,
       teacherId: req.user.id
     });
 
@@ -31,10 +43,10 @@ exports.createQuiz = async (req, res) => {
     });
   } catch (err) {
     console.error('Error creating quiz:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: err.message 
+      error: err.message
     });
   }
 };
@@ -50,9 +62,9 @@ exports.getMyQuizzes = async (req, res) => {
       data: quizzes
     });
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server error" 
+      message: "Server error"
     });
   }
 };
@@ -65,9 +77,9 @@ exports.getQuizById = async (req, res) => {
     });
 
     if (!quiz) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Quiz not found" 
+        message: "Quiz not found"
       });
     }
 
@@ -76,9 +88,9 @@ exports.getQuizById = async (req, res) => {
       data: quiz
     });
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server error" 
+      message: "Server error"
     });
   }
 };
@@ -91,16 +103,21 @@ exports.updateQuiz = async (req, res) => {
     });
 
     if (!quiz) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Quiz not found" 
+        message: "Quiz not found"
       });
     }
 
-    const { title, subject, questions } = req.body;
+    const { title, subject, class: studentClass, questions, startTime, endTime, duration } = req.body;
 
     if (title) quiz.title = title;
     if (subject) quiz.subject = subject;
+    if (studentClass) quiz.class = studentClass;
+    if (startTime) quiz.startTime = startTime;
+    if (endTime) quiz.endTime = endTime;
+    if (duration) quiz.duration = duration;
+
     if (questions) {
       quiz.questions = questions;
       quiz.totalMarks = questions.length;
@@ -115,9 +132,9 @@ exports.updateQuiz = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server error" 
+      message: "Server error"
     });
   }
 };
@@ -166,21 +183,21 @@ exports.deleteQuiz = async (req, res) => {
     });
 
     if (!quiz) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Quiz not found" 
+        message: "Quiz not found"
       });
     }
 
-    res.json({ 
+    res.json({
       success: true,
-      message: "Quiz deleted successfully" 
+      message: "Quiz deleted successfully"
     });
   } catch (err) {
     console.error('Error deleting quiz:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: "Server error" 
+      message: "Server error"
     });
   }
 };

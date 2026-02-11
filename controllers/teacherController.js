@@ -12,11 +12,11 @@ const emailTemplates = require("../config/emailTemplates");
 exports.getTeacherStats = async (req, res) => {
   try {
     const teacherId = req.user.id;
-    
+
     const totalStudents = await User.countDocuments({ role: "student", teacherId });
     const totalQuizzes = await Quiz.countDocuments({ teacherId });
     const totalSessions = await SessionSlot.countDocuments({ teacherId });
-    
+
     res.json({
       success: true,
       data: {
@@ -54,27 +54,27 @@ exports.getMyStudents = async (req, res) => {
 exports.getStudentById = async (req, res) => {
   try {
     const studentId = req.params.userId;
-    
+
     // Try to find by MongoDB _id first, then by userId
-    let student = await User.findOne({ 
-      _id: studentId, 
-      role: "student", 
-      teacherId: req.user.id 
+    let student = await User.findOne({
+      _id: studentId,
+      role: "student",
+      teacherId: req.user.id
     }).select("-password");
 
     // If not found by _id, try by userId
     if (!student) {
-      student = await User.findOne({ 
-        userId: studentId, 
-        role: "student", 
-        teacherId: req.user.id 
+      student = await User.findOne({
+        userId: studentId,
+        role: "student",
+        teacherId: req.user.id
       }).select("-password");
     }
 
     if (!student) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: "Student not found" 
+        message: "Student not found"
       });
     }
 
@@ -82,13 +82,12 @@ exports.getStudentById = async (req, res) => {
       success: true,
       message: "Get student by Teacher successful",
       data: student
-    });  
-  } 
-  catch (err) 
-  {
-    return res.status(500).json({ 
+    });
+  }
+  catch (err) {
+    return res.status(500).json({
       success: false,
-      message: "Server error" 
+      message: "Server error"
     });
   }
 };
@@ -119,7 +118,7 @@ exports.createStudent = async (req, res) => {
       teacherId: req.user.id,
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
     };
-    
+
     const student = await User.create(studentData);
 
     // Send emails to both teacher and student (non-blocking)
@@ -127,14 +126,14 @@ exports.createStudent = async (req, res) => {
     //   try {
     //     // Get teacher details
     //     const teacher = await User.findById(req.user.id).select('name email');
-        
+
     //     // Send email to teacher
     //     await sendEmail({
     //       to: teacher.email,
     //       subject: emailTemplates.student_added.teacher.subject,
     //       html: emailTemplates.student_added.teacher.html(teacher.name, name, email)
     //     });
-        
+
     //     // Send email to student
     //     await sendEmail({
     //       to: email,
@@ -156,7 +155,7 @@ exports.createStudent = async (req, res) => {
   }
 };
 
-    
+
 exports.updateStudent = async (req, res) => {
   try {
     const { name, email, age, class: className, city, state, country, timezone, mobileNumber } = req.body;
@@ -223,23 +222,23 @@ exports.updateStudent = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-        exports.deleteStudent = async (req, res) => {
+exports.deleteStudent = async (req, res) => {
   try {
     const studentId = req.params.userId;
-    
+
     // Try to find by MongoDB _id first, then by userId
-    let student = await User.findOne({ 
-      _id: studentId, 
-      role: "student", 
-      teacherId: req.user.id 
+    let student = await User.findOne({
+      _id: studentId,
+      role: "student",
+      teacherId: req.user.id
     });
 
     // If not found by _id, try by userId
     if (!student) {
-      student = await User.findOne({ 
-        userId: studentId, 
-        role: "student", 
-        teacherId: req.user.id 
+      student = await User.findOne({
+        userId: studentId,
+        role: "student",
+        teacherId: req.user.id
       });
     }
 
@@ -262,8 +261,8 @@ exports.updateStudent = async (req, res) => {
   }
 };
 
-    
-    exports.getStudentMarks = async (req, res) => {
+
+exports.getStudentMarks = async (req, res) => {
   try {
     const marks = await Mark.find({
       studentUserId: req.params.userId,
@@ -279,7 +278,7 @@ exports.updateStudent = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-    
+
 exports.addMark = async (req, res) => {
   try {
     const { subject, marks } = req.body;
@@ -481,7 +480,7 @@ exports.uploadStudentsCSV = async (req, res) => {
     });
   } catch (error) {
     console.error("CSV upload error:", error);
-    
+
     // Clean up uploaded file in case of error
     if (req.file && req.file.path) {
       try {
@@ -490,10 +489,108 @@ exports.uploadStudentsCSV = async (req, res) => {
         console.error("Error deleting uploaded file:", err);
       }
     }
-    
+
     return res.status(500).json({
       success: false,
       message: "Error processing CSV: " + error.message
     });
+  }
+};
+
+exports.getQuizSampleCSV = async (req, res) => {
+  try {
+    const fields = ["Question", "Option A", "Option B", "Option C", "Option D", "Correct Answer"];
+    const data = [
+      {
+        "Question": "What is the capital of France?",
+        "Option A": "London",
+        "Option B": "Berlin",
+        "Option C": "Paris",
+        "Option D": "Madrid",
+        "Correct Answer": "C"
+      },
+      {
+        "Question": "Which planet is known as the Red Planet?",
+        "Option A": "Mars",
+        "Option B": "Venus",
+        "Option C": "Jupiter",
+        "Option D": "Saturn",
+        "Correct Answer": "Mars"
+      }
+    ];
+
+    const { Parser } = require("json2csv");
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(data);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("quiz_sample.csv");
+    return res.send(csv);
+  } catch (error) {
+    console.error("Get sample CSV error:", error);
+    return res.status(500).json({ message: "Error generating sample CSV" });
+  }
+};
+
+exports.parseQuizCSV = async (req, res) => {
+  try {
+    const rows = req.csvRows;
+    const skipped = req.csvSkippedDetails;
+
+    // Transform rows to frontend friendly format
+    const questions = rows.map(row => {
+      // Determine correct option index/letter
+      let correctOption = "";
+      const validOptions = ["a", "b", "c", "d"];
+      const answer = row["Correct Answer"].trim();
+
+      if (validOptions.includes(answer.toLowerCase())) {
+        correctOption = answer.toLowerCase();
+      } else {
+        // Check if matches text
+        const opts = [
+          row["Option A"],
+          row["Option B"],
+          row["Option C"],
+          row["Option D"]
+        ];
+        const index = opts.findIndex(o => o.trim().toLowerCase() === answer.toLowerCase());
+        if (index !== -1) {
+          correctOption = validOptions[index];
+        }
+      }
+
+      return {
+        question: row["Question"],
+        options: [
+          row["Option A"],
+          row["Option B"],
+          row["Option C"],
+          row["Option D"]
+        ],
+        correctOption: correctOption
+      };
+    });
+
+    // Clean up file
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        console.error("Error deleting file", e);
+      }
+    }
+
+    return res.json({
+      success: true,
+      questions: questions,
+      skipped: skipped,
+      totalParsed: rows.length,
+      totalSkipped: skipped.length
+    });
+
+  } catch (error) {
+    console.error("Parse quiz CSV error:", error);
+    return res.status(500).json({ message: "Error parsing CSV" });
   }
 };

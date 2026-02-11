@@ -88,14 +88,15 @@
                     <div class="students-management-header">
                         <h2 id="studentsManagementTitle">Students Management (3)</h2>
                         <div class="header-actions">
-                            <button class="btn btn-primary" id="addStudentBtn">
-                                <i class="fas fa-plus"></i>
-                                Add Student
-                            </button>
                             <button class="btn btn-primary" id="uploadCsvBtn">
                                 <i class="fas fa-upload"></i>
                                 Upload CSV File
                             </button>
+                            <button class="btn btn-primary" id="addStudentBtn">
+                                <i class="fas fa-plus"></i>
+                                Add Student
+                            </button>
+
                         </div>
                     </div>
 
@@ -112,18 +113,170 @@
 
                 <!-- Quiz Management Page -->
                 <div class="page" id="quiz-page">
-                    <div class="page-header">
-                        <h2>Quiz Management</h2>
-                        <button class="btn-primary" id="createQuizBtn">
-                            <i class="fas fa-plus"></i>
-                            Create Quiz
+                    <!-- New Header Outside Container -->
+                    <div class="students-management-header" id="quizMainPageHeader">
+                        <h2 id="quizManagementTitle">Quiz Management</h2>
+                        <div class="header-actions">
+                            <button class="btn btn-primary" id="uploadQuizCsvBtn">
+                                <i class="fas fa-upload"></i>
+                                Upload CSV File
+                            </button>
+                            <button class="btn btn-primary" id="createQuizBtn">
+                                <i class="fas fa-plus"></i>
+                                Create Quiz
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Container for Quiz UI -->
+                    <div class="quiz-main-card">
+                        <!-- Header Section inside the card -->
+                        <div class="quiz-main-header">
+                            <div class="quiz-header-title">
+                                <div class="title-bar"></div>
+                                <h2>Quiz List</h2>
+                            </div>
+                            <div class="quiz-header-actions">
+                                <span class="quiz-count-badge" id="quizCountSubtitle">0 quizzes</span>
+                            </div>
+                        </div>
+
+                        <!-- Quiz List -->
+                        <div class="quiz-list-container">
+                            <div class="quizzes-list" id="quizList">
+                                <p class="empty">No quizzes created yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Creation Form Header -->
+                    <div id="quizFormHeader" class="page-header" style="display: none;">
+                        <h2>Create New Quiz</h2>
+                        <button class="btn-secondary" id="backToQuizListBtn">
+                            <i class="fas fa-arrow-left"></i>
+                            Back to Quiz List
                         </button>
                     </div>
 
-                    <div class="quiz-grid common-container" id="quizList">
-                        <p class="empty">No quizzes created yet</p>
+                    <!-- Quiz Creation Form (Initially Hidden) -->
+                    <div id="quizCreationForm" class="quiz-creation-form" style="display: none;">
+                        <div class="quiz-form-container">
+                            <form id="createQuizForm">
+                                <input type="hidden" id="quizId" name="quizId">
+                                <div class="quiz-form-section">
+                                    <h3>Quiz Information</h3>
+                                    <div class="form-group">
+                                        <label for="quizTitle">Quiz Title *</label>
+                                        <input type="text" id="quizTitle" name="title" placeholder="Enter quiz title"
+                                            required>
+                                    </div>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="quizClass">Class *</label>
+                                            <select id="quizClass" name="class" required>
+                                                <option value="">Select Class</option>
+                                                <option value="1st">1st</option>
+                                                <option value="2nd">2nd</option>
+                                                <option value="3rd">3rd</option>
+                                                <option value="4th">4th</option>
+                                                <option value="5th">5th</option>
+                                                <option value="6th">6th</option>
+                                                <option value="7th">7th</option>
+                                                <option value="8th">8th</option>
+                                                <option value="9th">9th</option>
+                                                <option value="10th">10th</option>
+                                                <option value="11th">11th</option>
+                                                <option value="12th">12th</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="quizSubject">Subject *</label>
+                                            <input type="text" id="quizSubject" name="subject"
+                                                placeholder="e.g., Mathematics, Science" required>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <div class="quiz-form-section">
+                                    <h3>Schedule Settings</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="quizStartTime">Start Time *</label>
+                                            <input type="datetime-local" id="quizStartTime" name="startTime" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="quizEndTime">End Time *</label>
+                                            <input type="datetime-local" id="quizEndTime" name="endTime" required>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="quizDuration">Duration (minutes) *</label>
+                                        <input type="number" id="quizDuration" name="duration" placeholder="e.g., 30"
+                                            min="1" required>
+                                    </div>
+                                </div>
+
+                                <div class="quiz-form-section">
+                                    <h3>Questions</h3>
+                                    <div id="questionsContainer">
+                                        <div class="question-item">
+                                            <div class="question-header">
+                                                <span class="question-number">Question 1</span>
+                                                <button type="button" class="btn-remove-question"
+                                                    style="display: none;">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div class="question-content">
+                                                <input type="text" name="questions[]" placeholder="Question" required>
+                                                <div class="options-grid">
+                                                    <input type="text" name="options1[]" placeholder="Option A"
+                                                        required>
+                                                    <input type="text" name="options1[]" placeholder="Option B"
+                                                        required>
+                                                    <input type="text" name="options1[]" placeholder="Option C"
+                                                        required>
+                                                    <input type="text" name="options1[]" placeholder="Option D"
+                                                        required>
+                                                </div>
+                                                <div class="answer-section">
+                                                    <label>Correct Answer:</label>
+                                                    <select name="answers[]" required>
+                                                        <option value="">Select correct answer</option>
+                                                        <option value="0">A</option>
+                                                        <option value="1">B</option>
+                                                        <option value="2">C</option>
+                                                        <option value="3">D</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn-add-question" id="addQuestionBtn">
+                                        <i class="fas fa-plus-circle"></i>
+                                        Add Question
+                                    </button>
+                                </div>
+
+                                <div class="quiz-form-actions">
+                                    <button type="button" class="btn-secondary" id="cancelQuizBtn">
+                                        <i class="fas fa-times-circle"></i>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="btn-primary">
+                                        <i class="fas fa-save"></i>
+                                        Create Quiz
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
+
+
                 </div>
+
                 <!-- Availability Page -->
                 <div class="page" id="availability-page">
                     <div class="availability-header">
@@ -227,7 +380,7 @@
                             <div class="filter-row">
                                 <select id="sessionTypeFilter" class="session-filter-select">
                                     <option value="all" selected>All Sessions</option>
-                                    <option value="personal">Personal</option>
+                                    <option value="personal">Particular Student</option>
                                     <option value="common">All Students</option>
                                 </select>
                             </div>
@@ -242,7 +395,7 @@
                                 <span id="sessionCount">0 sessions</span>
                             </div>
                         </div>
-                        
+
                         <!-- Sessions List -->
                         <div class="sessions-list" id="sessionsList">
                             <div class="empty">
@@ -284,83 +437,83 @@
                         <form id="marksForm">
                             <div class="form-row">
                                 <select id="marksStudentSelect" required>
-                                <option value="">Select Student</option>
-                            </select>
-                            <input type="text" id="subject" placeholder="Subject" required>
-                            <input type="number" id="marks" placeholder="Marks" min="0" max="100" required>
-                            <button type="submit" class="btn-primary">Add</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="card common-container">
-                    <h3>Marks Record</h3>
-                    <div class="table-container">
-                        <table class="marks-table">
-                            <thead>
-                                <tr>
-                                    <th>Student</th>
-                                    <th>Subject</th>
-                                    <th>Marks</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td colspan="5" class="empty">No records found</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                    <option value="">Select Student</option>
+                                </select>
+                                <input type="text" id="subject" placeholder="Subject" required>
+                                <input type="number" id="marks" placeholder="Marks" min="0" max="100" required>
+                                <button type="submit" class="btn-primary">Add</button>
+                            </div>
+                        </form>
                     </div>
-                </div>
-            </div>
 
-            <!-- Profile Page -->
-            <div class="page" id="profile-page">
-                <div class="profile-card common-container">
-                    <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
-                    <div class="profile-info">
-                        <h2 id="profileName">Teacher Name</h2>
-                        <p id="profileEmail">teacher@example.com</p>
-                        <span class="role-badge">Teacher</span>
-                    </div>
-                    <button class="btn-primary" id="editProfileBtn">
-                        <i class="fas fa-edit"></i>
-                        Edit Profile
-                    </button>
-                </div>
-
-                <div class="info-grid">
-                    <div class="info-card common-container">
-                        <h3>Personal Information</h3>
-                        <div class="info-list">
-                            <div class="info-item">
-                                <span>Teacher ID:</span>
-                                <span id="profileUserId">-</span>
-                            </div>
-                            <div class="info-item">
-                                <span>Mobile:</span>
-                                <span id="profileMobile">-</span>
-                            </div>
-                            <div class="info-item">
-                                <span>TimeZone:</span>
-                                <span id="profileTimezone">-</span>
-                            </div>
-                            <div class="info-item">
-                                <span>City:</span>
-                                <span id="profileCity">-</span>
-                            </div>
-                            <div class="info-item">
-                                <span>State:</span>
-                                <span id="profileState">-</span>
-                            </div>
+                    <div class="card common-container">
+                        <h3>Marks Record</h3>
+                        <div class="table-container">
+                            <table class="marks-table">
+                                <thead>
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Subject</th>
+                                        <th>Marks</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5" class="empty">No records found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
+
+                <!-- Profile Page -->
+                <div class="page" id="profile-page">
+                    <div class="profile-card common-container">
+                        <img src="" alt="Profile" class="profile-avatar" id="profileAvatar">
+                        <div class="profile-info">
+                            <h2 id="profileName">Teacher Name</h2>
+                            <p id="profileEmail">teacher@example.com</p>
+                            <span class="role-badge">Teacher</span>
+                        </div>
+                        <button class="btn-primary" id="editProfileBtn">
+                            <i class="fas fa-edit"></i>
+                            Edit Profile
+                        </button>
+                    </div>
+
+                    <div class="info-grid">
+                        <div class="info-card common-container">
+                            <h3>Personal Information</h3>
+                            <div class="info-list">
+                                <div class="info-item">
+                                    <span>Teacher ID:</span>
+                                    <span id="profileUserId">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>Mobile:</span>
+                                    <span id="profileMobile">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>TimeZone:</span>
+                                    <span id="profileTimezone">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>City:</span>
+                                    <span id="profileCity">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>State:</span>
+                                    <span id="profileState">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-    </div>
-    </main>
+        </main>
     </div>
 
     <!-- Modals -->
@@ -440,8 +593,21 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="class">Class *</label>
-                            <input type="text" id="class" name="class" placeholder="e.g., 10th Grade"
-                                data-required="true">
+                            <select id="class" name="class" data-required="true">
+                                <option value="">Select Class</option>
+                                <option value="1st">1st</option>
+                                <option value="2nd">2nd</option>
+                                <option value="3rd">3rd</option>
+                                <option value="4th">4th</option>
+                                <option value="5th">5th</option>
+                                <option value="6th">6th</option>
+                                <option value="7th">7th</option>
+                                <option value="8th">8th</option>
+                                <option value="9th">9th</option>
+                                <option value="10th">10th</option>
+                                <option value="11th">11th</option>
+                                <option value="12th">12th</option>
+                            </select>
                             <span class="validation-message"></span>
                         </div>
                         <div class="form-group">
@@ -546,55 +712,6 @@
         </div>
     </div>
 
-    <div class="modal" id="createQuizModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Create New Quiz</h3>
-                <button class="modal-close" id="closeQuizModal">&times;</button>
-            </div>
-            <form id="createQuizForm">
-                <div class="form-group">
-                    <label>Quiz Title</label>
-                    <input type="text" name="title" placeholder="Enter quiz title" required>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Subject</label>
-                        <input type="text" name="subject" placeholder="Enter subject (e.g., Mathematics, Science)"
-                            required>
-                    </div>
-                    <div class="form-group">
-                        <label>Class</label>
-                        <input type="text" name="class" placeholder="Enter class (e.g., 10A, BCA, etc.)">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Duration (minutes)</label>
-                    <input type="number" name="duration" placeholder="Duration in minutes" min="1" required>
-                </div>
-                <div id="questionsContainer">
-                    <h4>Questions</h4>
-                    <div class="question-item">
-                        <input type="text" name="questions[]" placeholder="Question 1" required>
-                        <input type="text" name="options1[]" placeholder="Option A" required>
-                        <input type="text" name="options1[]" placeholder="Option B" required>
-                        <input type="text" name="options1[]" placeholder="Option C" required>
-                        <input type="text" name="options1[]" placeholder="Option D" required>
-                        <select name="answers[]">
-                            <option value="">Select Answer</option>
-                            <option value="0">A</option>
-                            <option value="1">B</option>
-                            <option value="2">C</option>
-                            <option value="3">D</option>
-                        </select>
-                    </div>
-                </div>
-                <button type="button" class="btn-secondary" id="addQuestionBtn">Add Question</button>
-                <button type="submit" class="btn-primary">Create Quiz</button>
-            </form>
-        </div>
-    </div>
-    /
     <!-- Edit Profile Modal -->
     <div class="modal" id="editProfileModal">
         <div class="modal-content">
@@ -630,7 +747,8 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="editMobileNumber">Mobile</label>
-                                    <input type="tel" id="editMobileNumber" name="mobileNumber" placeholder="Enter Mobile Number" maxlength="10">
+                                    <input type="tel" id="editMobileNumber" name="mobileNumber"
+                                        placeholder="Enter Mobile Number" maxlength="10">
                                 </div>
                                 <div class="form-group">
                                     <label for="editCity">City</label>
@@ -657,7 +775,8 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="editSubject">Subject</label>
-                                    <input type="text" id="editSubject" name="subject" placeholder="Enter Primary Subject">
+                                    <input type="text" id="editSubject" name="subject"
+                                        placeholder="Enter Primary Subject">
                                 </div>
                                 <div class="form-group">
                                     <label for="editTimezone">Timezone</label>
@@ -709,12 +828,14 @@
                                         <div class="profile-circle" id="editProfileCircle">
                                             <div class="profile-placeholder">
                                                 <span>Profile</span>
-                                                <div class="upload-icon-small" onclick="document.getElementById('editProfileImage').click()">
+                                                <div class="upload-icon-small"
+                                                    onclick="document.getElementById('editProfileImage').click()">
                                                     <i class="fas fa-arrow-up"></i>
                                                 </div>
                                             </div>
                                         </div>
-                                        <input type="file" id="editProfileImage" name="image" accept="image/*" class="profile-input-simple">
+                                        <input type="file" id="editProfileImage" name="image" accept="image/*"
+                                            class="profile-input-simple">
                                     </div>
                                 </div>
                             </div>
@@ -919,14 +1040,14 @@
                 <h3><i class="fas fa-user-plus"></i> Assign Slot to Student</h3>
                 <span class="close-modal" onclick="dashboard.hideModal('assignSlotModal')">&times;</span>
             </div>
-            
+
             <div class="modal-body">
                 <!-- Selected Slot Preview -->
                 <div class="selected-slot-preview">
                     <div class="preview-header">
                         <h4><i class="fas fa-calendar-check"></i> Selected Slot</h4>
                     </div>
-                    
+
                     <div class="slot-details">
                         <div class="slot-detail-item">
                             <div class="detail-icon">
@@ -937,7 +1058,7 @@
                                 <span id="assignSlotTime">Time Slot</span>
                             </div>
                         </div>
-                        
+
                         <div class="slot-detail-item" id="slotDateContainer">
                             <div class="detail-icon">
                                 <i class="fas fa-calendar"></i>
@@ -947,7 +1068,7 @@
                                 <span id="assignSlotDate">Session Date</span>
                             </div>
                         </div>
-                        
+
                         <div class="slot-detail-item">
                             <div class="detail-icon">
                                 <i class="fas fa-tag"></i>
@@ -959,7 +1080,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Student Selection -->
                 <div class="student-selection-section">
                     <div class="form-group" id="assignStudentWrapper">
@@ -989,6 +1110,100 @@
                 </button>
                 <button type="button" class="btn btn-primary" id="confirmAssignSlot">
                     <i class="fas fa-check"></i> Assign Slot
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Quiz CSV Modal -->
+    <div class="modal" id="uploadQuizCsvModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Quiz CSV</h3>
+                <button class="modal-close" id="closeQuizCsvModal">&times;</button>
+            </div>
+            <form id="uploadQuizCsvForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Choose CSV File</label>
+                        <input type="file" name="csv" id="csvFileInput" accept=".csv" required>
+                        <div class="csv-help">
+                            <p><strong>CSV Format:</strong>
+                                Question, Option A, Option B, Option C, Option D, Correct Answer
+                            </p>
+                            <p><strong>Sample Row:</strong>
+                                What is 2+2?, 3, 4, 5, 6, B
+                            </p>
+                            <p><strong>Note:</strong> Correct Answer must be 'A', 'B', 'C', or 'D', or match the option
+                                text
+                                exactly.</p>
+                            <a href="#" id="downloadQuizSampleBtn" class="download-sample">
+                                <i class="fas fa-download"></i> Download Sample CSV
+                            </a>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary btn-block">Upload CSV</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quiz Preview Modal -->
+    <div class="modal" id="quizPreviewModal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-eye"></i> Preview Quiz</h3>
+                <button class="modal-close" id="closeQuizPreviewModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="quiz-preview-summary">
+                    <div class="summary-item">
+                        <label>Title:</label>
+                        <span id="previewTitle" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Subject:</label>
+                        <span id="previewSubject" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Class:</label>
+                        <span id="previewClass" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Duration:</label>
+                        <span id="previewDuration" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <label>Total Questions:</label>
+                        <span id="previewTotalQuestions" class="summary-value"></span>
+                    </div>
+                </div>
+
+                <div class="quiz-preview-questions">
+                    <h4>Questions</h4>
+                    <div class="table-responsive">
+                        <table class="table quiz-preview-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Question</th>
+                                    <th style="width: 250px;">Options</th>
+                                    <th style="width: 80px;">Correct</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quizPreviewTableBody">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelQuizPreview">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn btn-primary" id="confirmCreateQuizBtn">
+                    <i class="fas fa-check-circle"></i> Confirm & Create
                 </button>
             </div>
         </div>
@@ -1044,18 +1259,18 @@
         loadComponents();
 
         // Profile image preview functionality
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const editProfileImage = document.getElementById('editProfileImage');
             const editProfileCircle = document.getElementById('editProfileCircle');
             const currentProfileImage = document.getElementById('currentProfileImage');
             const currentProfileImageContainer = document.getElementById('currentProfileImageContainer');
 
             if (editProfileImage) {
-                editProfileImage.addEventListener('change', function(e) {
+                editProfileImage.addEventListener('change', function (e) {
                     const file = e.target.files[0];
                     if (file && file.type.startsWith('image/')) {
                         const reader = new FileReader();
-                        reader.onload = function(e) {
+                        reader.onload = function (e) {
                             // Update the profile circle with the new image
                             editProfileCircle.innerHTML = `
                                 <img src="${e.target.result}" alt="Profile Preview">
@@ -1063,7 +1278,7 @@
                                     <i class="fas fa-arrow-up"></i>
                                 </div>
                             `;
-                            
+
                             // Update the current image container
                             if (currentProfileImage && currentProfileImageContainer) {
                                 currentProfileImage.src = e.target.result;
@@ -1076,8 +1291,8 @@
             }
         });
     </script>
-<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
 
     <script src="/js/teacherDashboard.js"></script>
 </body>
