@@ -85,7 +85,6 @@ const quizCsvValidators = [
     .notEmpty()
     .withMessage("Correct Answer is required")
     .custom((value, { req }) => {
-      // Allow A, B, C, D (case insensitive) OR exact match with option text
       const validOptions = ["a", "b", "c", "d"];
       const valLower = value.toLowerCase();
 
@@ -105,70 +104,55 @@ const quizCsvValidators = [
     })
 ];
 
-const quizCsvValidation = async (req, res, next) => {
+const quizCsvValidation = (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({ message: "CSV file is required" });
   }
 
   const rows = [];
-  const skippedDetails = [];
+  const skipped = [];
+  const required = ["Question", "Option A", "Option B", "Option C", "Option D", "Correct Answer"];
 
   fs.createReadStream(req.file.path)
     .pipe(csv())
-    .on("data", (row) => {
-      // Normalize keys (trim spaces)
-      const cleanRow = {};
-      Object.keys(row).forEach(key => {
-        cleanRow[key.trim()] = row[key];
-      });
-      rows.push(cleanRow);
-    })
-    .on("error", (error) => {
-      console.error("CSV parsing error:", error);
-      return res.status(400).json({ message: "Error parsing CSV file: " + error.message });
-    })
+    .on("data", row => rows.push(row))
+    .on("error", err =>
+      res.status(400).json({ message: "CSV parse error: " + err.message })
+    )
     .on("end", async () => {
-      try {
-        if (rows.length === 0) {
-          return res.status(400).json({ message: "CSV file is empty" });
+      if (!rows.length) {
+        return res.status(400).json({ message: "CSV file is empty" });
+      }
+
+      // check headers
+      const missing = required.filter(h => !Object.keys(rows[0]).includes(h));
+      if (missing.length) {
+        return res.status(400).json({
+          message: "Missing columns: " + missing.join(", ")
+        });
+      }
+
+      // validate each row
+      for (let i = 0; i < rows.length; i++) {
+        const fakeReq = { body: rows[i] };
+
+        for (const rule of quizCsvValidators) {
+          await rule.run(fakeReq);
         }
 
-        // Validate headers roughly by checking first row
-        const requiredHeaders = ["Question", "Option A", "Option B", "Option C", "Option D", "Correct Answer"];
-        const firstRowKeys = Object.keys(rows[0]);
-        const missingHeaders = requiredHeaders.filter(h => !firstRowKeys.includes(h));
-
-        if (missingHeaders.length > 0) {
-          return res.status(400).json({
-            message: "Invalid CSV format. Missing columns: " + missingHeaders.join(", ")
+        const errors = validationResult(fakeReq);
+        if (!errors.isEmpty()) {
+          skipped.push({
+            row: i + 2,
+            question: rows[i].Question || "Unknown",
+            reasons: errors.array().map(e => e.msg)
           });
         }
-
-        for (let i = 0; i < rows.length; i++) {
-          const fakeReq = { body: rows[i] };
-
-          for (const rule of quizCsvValidators) {
-            await rule.run(fakeReq);
-          }
-
-          const errors = validationResult(fakeReq);
-
-          if (!errors.isEmpty()) {
-            skippedDetails.push({
-              row: i + 2, // +2 because 1-based index + header row
-              question: rows[i].Question ? rows[i].Question.substring(0, 30) + "..." : "Unknown",
-              reasons: errors.array().map(e => e.msg)
-            });
-          }
-        }
-
-        req.csvRows = rows;
-        req.csvSkippedDetails = skippedDetails;
-        next();
-      } catch (error) {
-        console.error("CSV validation error:", error);
-        return res.status(400).json({ message: "Error validating CSV: " + error.message });
       }
+
+      req.csvRows = rows;
+      req.csvSkippedDetails = skipped;
+      next();
     });
 };
 

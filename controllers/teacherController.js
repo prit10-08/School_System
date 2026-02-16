@@ -537,9 +537,7 @@ exports.parseQuizCSV = async (req, res) => {
     const rows = req.csvRows;
     const skipped = req.csvSkippedDetails;
 
-    // Transform rows to frontend friendly format
     const questions = rows.map(row => {
-      // Determine correct option index/letter
       let correctOption = "";
       const validOptions = ["a", "b", "c", "d"];
       const answer = row["Correct Answer"].trim();
@@ -547,7 +545,6 @@ exports.parseQuizCSV = async (req, res) => {
       if (validOptions.includes(answer.toLowerCase())) {
         correctOption = answer.toLowerCase();
       } else {
-        // Check if matches text
         const opts = [
           row["Option A"],
           row["Option B"],
@@ -572,7 +569,6 @@ exports.parseQuizCSV = async (req, res) => {
       };
     });
 
-    // Clean up file
     if (req.file && req.file.path) {
       try {
         fs.unlinkSync(req.file.path);
@@ -592,5 +588,80 @@ exports.parseQuizCSV = async (req, res) => {
   } catch (error) {
     console.error("Parse quiz CSV error:", error);
     return res.status(500).json({ message: "Error parsing CSV" });
+  }
+};
+
+// Get quiz attempts for a specific quiz
+exports.getQuizAttempts = async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    const teacherId = req.user.id;
+
+    // Verify the quiz belongs to this teacher
+    const Quiz = require("../models/Quiz");
+    const quiz = await Quiz.findOne({ _id: quizId, teacherId });
+    
+    if (!quiz) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Quiz not found or you don't have permission to view it" 
+      });
+    }
+
+    // Get all marks for this quiz
+    const Mark = require("../models/Mark");
+    const User = require("../models/User");
+    
+    const attempts = await Mark.find({ quizId })
+      .populate('student_id', 'name email userId class')
+      .sort({ submissionTime: -1 });
+
+    // Get all students for this teacher to show who hasn't attempted
+    const allStudents = await User.find({ 
+      teacherId, 
+      role: "student" 
+    }).select('name email userId class');
+
+    // Separate attempted and non-attempted students
+    const attemptedStudentIds = attempts.map(attempt => attempt.student_id._id.toString());
+    const nonAttemptedStudents = allStudents.filter(student => 
+      !attemptedStudentIds.includes(student._id.toString())
+    );
+
+    res.json({
+      success: true,
+      data: {
+        quiz: {
+          _id: quiz._id,
+          title: quiz.title,
+          subject: quiz.subject,
+          class: quiz.class,
+          totalMarks: quiz.totalMarks,
+          questions: quiz.questions.length
+        },
+        attempts: attempts.map(attempt => ({
+          _id: attempt._id,
+          student: attempt.student_id,
+          obtainedMarks: attempt.marks,
+          totalMarks: attempt.totalMarks,
+          percentage: attempt.totalMarks > 0 ? ((attempt.marks / attempt.totalMarks) * 100).toFixed(1) : 0,
+          submissionTime: attempt.submissionTime,
+          answers: attempt.answers,
+          status: 'submitted'
+        })),
+        summary: {
+          totalStudents: allStudents.length,
+          attemptedStudents: attempts.length,
+          nonAttemptedStudents: nonAttemptedStudents.length,
+          averageScore: attempts.length > 0 ? 
+            (attempts.reduce((sum, a) => sum + (a.totalMarks > 0 ? (a.marks / a.totalMarks) * 100 : 0), 0) / attempts.length).toFixed(1) : 0
+        },
+        nonAttemptedStudents
+      }
+    });
+
+  } catch (err) {
+    console.error("Error fetching quiz attempts:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

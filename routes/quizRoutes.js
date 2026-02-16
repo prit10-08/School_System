@@ -25,6 +25,7 @@ const router = express.Router();
 
 router.get("/available", jwtAuth, roleAuth("student"), getAvailableQuizzes);
 
+
 router.post("/", jwtAuth, roleAuth("teacher"), createQuizValidation, validate, createQuiz);
 router.get("/", jwtAuth, roleAuth("teacher"), getMyQuizzes);
 router.put("/:id", jwtAuth, roleAuth("teacher"), quizIdParam, updateQuizValidation, validate, updateQuiz);

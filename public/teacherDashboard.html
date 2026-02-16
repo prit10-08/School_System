@@ -37,7 +37,7 @@
                         </div>
                         <div class="stat-card common-container">
                             <div class="stat-icon green">
-                                <i class="fas fa-question-circle"></i>
+                                <i class="fas fa-file-alt"></i>
                             </div>
                             <div class="stat-info">
                                 <h3>Total Quizzes</h3>
@@ -58,10 +58,10 @@
                     <div class="dashboard-grid">
                         <div class="dashboard-card common-container">
                             <div class="card-header">
-                                <h3>Recent Holidays</h3>
+                                <h3>Recent Sessions</h3>
                             </div>
-                            <div class="card-content" id="recentHolidays">
-                                <p class="empty">No holidays scheduled</p>
+                            <div class="card-content" id="recentSessions">
+                                <p class="empty">No sessions created yet</p>
                             </div>
                         </div>
                         <div class="dashboard-card common-container">
@@ -74,12 +74,13 @@
                         </div>
                         <div class="dashboard-card common-container">
                             <div class="card-header">
-                                <h3>Recent Sessions</h3>
+                                <h3>Recent Holidays</h3>
                             </div>
-                            <div class="card-content" id="recentSessions">
-                                <p class="empty">No sessions created yet</p>
+                            <div class="card-content" id="recentHolidays">
+                                <p class="empty">No holidays scheduled</p>
                             </div>
                         </div>
+                        
                     </div>
                 </div>
 
@@ -121,6 +122,7 @@
                                 <i class="fas fa-upload"></i>
                                 Upload CSV File
                             </button>
+                           
                             <button class="btn btn-primary" id="createQuizBtn">
                                 <i class="fas fa-plus"></i>
                                 Create Quiz
@@ -161,20 +163,19 @@
                     <!-- Quiz Creation Form (Initially Hidden) -->
                     <div id="quizCreationForm" class="quiz-creation-form" style="display: none;">
                         <div class="quiz-form-container">
-                            <form id="createQuizForm">
+                            <form id="createQuizForm" novalidate>
                                 <input type="hidden" id="quizId" name="quizId">
                                 <div class="quiz-form-section">
                                     <h3>Quiz Information</h3>
-                                    <div class="form-group">
-                                        <label for="quizTitle">Quiz Title *</label>
-                                        <input type="text" id="quizTitle" name="title" placeholder="Enter quiz title"
-                                            required>
-                                    </div>
-
                                     <div class="form-row">
                                         <div class="form-group">
+                                            <label for="quizTitle">Quiz Title *</label>
+                                            <input type="text" id="quizTitle" name="title" placeholder="Enter quiz title">
+                                            <span class="validation-message"></span>
+                                        </div>
+                                        <div class="form-group">
                                             <label for="quizClass">Class *</label>
-                                            <select id="quizClass" name="class" required>
+                                            <select id="quizClass" name="class">
                                                 <option value="">Select Class</option>
                                                 <option value="1st">1st</option>
                                                 <option value="2nd">2nd</option>
@@ -189,14 +190,15 @@
                                                 <option value="11th">11th</option>
                                                 <option value="12th">12th</option>
                                             </select>
+                                            <span class="validation-message"></span>
                                         </div>
                                         <div class="form-group">
                                             <label for="quizSubject">Subject *</label>
                                             <input type="text" id="quizSubject" name="subject"
-                                                placeholder="e.g., Mathematics, Science" required>
+                                                placeholder="e.g., Mathematics, Science">
+                                            <span class="validation-message"></span>
                                         </div>
                                     </div>
-
                                 </div>
 
                                 <div class="quiz-form-section">
@@ -204,17 +206,20 @@
                                     <div class="form-row">
                                         <div class="form-group">
                                             <label for="quizStartTime">Start Time *</label>
-                                            <input type="datetime-local" id="quizStartTime" name="startTime" required>
+                                            <input type="datetime-local" id="quizStartTime" name="startTime">
+                                            <span class="validation-message"></span>
                                         </div>
                                         <div class="form-group">
                                             <label for="quizEndTime">End Time *</label>
-                                            <input type="datetime-local" id="quizEndTime" name="endTime" required>
+                                            <input type="datetime-local" id="quizEndTime" name="endTime">
+                                            <span class="validation-message"></span>
                                         </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="quizDuration">Duration (minutes) *</label>
-                                        <input type="number" id="quizDuration" name="duration" placeholder="e.g., 30"
-                                            min="1" required>
+                                        <div class="form-group">
+                                            <label for="quizDuration">Duration (minutes) *</label>
+                                            <input type="number" id="quizDuration" name="duration" placeholder="e.g., 30"
+                                                min="1">
+                                            <span class="validation-message"></span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -230,20 +235,29 @@
                                                 </button>
                                             </div>
                                             <div class="question-content">
-                                                <input type="text" name="questions[]" placeholder="Question" required>
+                                                <input type="text" name="questions[]" placeholder="Question">
+                                                <span class="validation-message"></span>
                                                 <div class="options-grid">
-                                                    <input type="text" name="options1[]" placeholder="Option A"
-                                                        required>
-                                                    <input type="text" name="options1[]" placeholder="Option B"
-                                                        required>
-                                                    <input type="text" name="options1[]" placeholder="Option C"
-                                                        required>
-                                                    <input type="text" name="options1[]" placeholder="Option D"
-                                                        required>
+                                                    <div>
+                                                        <input type="text" name="options1[]" placeholder="Option A">
+                                                        <span class="validation-message"></span>
+                                                    </div>
+                                                    <div>
+                                                        <input type="text" name="options1[]" placeholder="Option B">
+                                                        <span class="validation-message"></span>
+                                                    </div>
+                                                    <div>
+                                                        <input type="text" name="options1[]" placeholder="Option C">
+                                                        <span class="validation-message"></span>
+                                                    </div>
+                                                    <div>
+                                                        <input type="text" name="options1[]" placeholder="Option D">
+                                                        <span class="validation-message"></span>
+                                                    </div>
                                                 </div>
                                                 <div class="answer-section">
                                                     <label>Correct Answer:</label>
-                                                    <select name="answers[]" required>
+                                                    <select name="answers[]">
                                                         <option value="">Select correct answer</option>
                                                         <option value="0">A</option>
                                                         <option value="1">B</option>
@@ -265,9 +279,17 @@
                                         <i class="fas fa-times-circle"></i>
                                         Cancel
                                     </button>
-                                    <button type="submit" class="btn-primary">
+                                    <button type="button" class="btn btn-outline" id="saveDraftBtn">
+                                        <i class="fas fa-save"></i>
+                                        Save to Draft
+                                    </button>
+                                    <button type="submit" class="btn-primary" id="createUpdateQuizBtn">
                                         <i class="fas fa-save"></i>
                                         Create Quiz
+                                    </button>
+                                    <button type="button" class="btn-primary" id="publishQuizBtn" style="display: none;">
+                                        <i class="fas fa-rocket"></i>
+                                        Publish Quiz
                                     </button>
                                 </div>
                             </form>
@@ -1148,62 +1170,48 @@
         </div>
     </div>
 
-    <!-- Quiz Preview Modal -->
-    <div class="modal" id="quizPreviewModal">
+    <!-- Enhanced Quiz Preview Modal -->
+    <div class="modal quiz-preview-modal" id="quizPreviewModal">
         <div class="modal-content modal-lg">
             <div class="modal-header">
-                <h3><i class="fas fa-eye"></i> Preview Quiz</h3>
-                <button class="modal-close" id="closeQuizPreviewModal">&times;</button>
+                <div class="header-content">
+                    <i class="fas fa-file-alt preview-icon"></i>
+                    <div class="header-text">
+                        <h3 id="previewTitle">Quiz Title</h3>
+                        <div class="quiz-meta">
+                            <span class="meta-item"><i class="fas fa-book"></i> <span id="previewSubject">Subject</span></span>
+                            <span class="meta-item"><i class="fas fa-users"></i> Class <span id="previewClass">-</span></span>
+                            <span class="meta-item"><i class="far fa-clock"></i> <span id="previewDuration">-</span> mins</span>
+                            <span class="meta-item"><i class="far fa-question-circle"></i> <span id="previewTotalQuestions">0</span> Questions</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="modal-close" id="closeQuizPreviewModal" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
             <div class="modal-body">
-                <div class="quiz-preview-summary">
-                    <div class="summary-item">
-                        <label>Title:</label>
-                        <span id="previewTitle" class="summary-value"></span>
+                <div class="quiz-timing">
+                    <div class="timing-item">
+                        <span class="timing-label">Starts:</span>
+                        <span class="timing-value" id="previewStartTime">-</span>
                     </div>
-                    <div class="summary-item">
-                        <label>Subject:</label>
-                        <span id="previewSubject" class="summary-value"></span>
-                    </div>
-                    <div class="summary-item">
-                        <label>Class:</label>
-                        <span id="previewClass" class="summary-value"></span>
-                    </div>
-                    <div class="summary-item">
-                        <label>Duration:</label>
-                        <span id="previewDuration" class="summary-value"></span>
-                    </div>
-                    <div class="summary-item">
-                        <label>Total Questions:</label>
-                        <span id="previewTotalQuestions" class="summary-value"></span>
+                    <div class="timing-item">
+                        <span class="timing-label">Ends:</span>
+                        <span class="timing-value" id="previewEndTime">-</span>
                     </div>
                 </div>
 
-                <div class="quiz-preview-questions">
-                    <h4>Questions</h4>
-                    <div class="table-responsive">
-                        <table class="table quiz-preview-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 50px;">#</th>
-                                    <th>Question</th>
-                                    <th style="width: 250px;">Options</th>
-                                    <th style="width: 80px;">Correct</th>
-                                </tr>
-                            </thead>
-                            <tbody id="quizPreviewTableBody">
-                                <!-- Populated via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="quiz-questions-container" id="quizPreviewQuestionsList">
+                    <!-- Questions will be populated by JavaScript -->
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelQuizPreview">
-                    <i class="fas fa-edit"></i> Edit
+                <button class="btn btn-outline" id="cancelQuizPreview">
+                    <i class="fas fa-edit"></i> Edit Quiz
                 </button>
                 <button class="btn btn-primary" id="confirmCreateQuizBtn">
-                    <i class="fas fa-check-circle"></i> Confirm & Create
+                    <i class="fas fa-check-circle"></i> Confirm & Publish Quiz
                 </button>
             </div>
         </div>
@@ -1294,7 +1302,117 @@
     <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
 
+    <!-- Publish Quiz Confirmation Modal -->
+    <div class="modal" id="publishQuizModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-icon">
+                        <i class="fas fa-rocket"></i>
+                    </div>
+                    <h3 class="modal-title">Publish Quiz</h3>
+                    <button type="button" class="modal-close" id="closePublishQuizModal" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="publish-confirmation">
+                        <div class="confirmation-icon">
+                            <i class="fas fa-question-circle"></i>
+                        </div>
+                        <div class="confirmation-content">
+                            <h4>Are you sure you want to publish this quiz?</h4>
+                            <p>Once published, students will be able to access this quiz and it will appear in the published quiz list.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="cancelPublishQuiz">
+                        <i class="fas fa-times"></i>
+                        <span>Cancel</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="confirmPublishQuiz">
+                        <i class="fas fa-rocket"></i>
+                        <span>Yes, Publish</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/js/teacherDashboard.js"></script>
+
+    <!-- Quiz Confirmation Modal (Refined) -->
+    <div id="quizPreviewModal" class="modal quiz-confirmation-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="header-icon-container">
+                    <div class="header-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                </div>
+                <h2>Quiz Confirmation</h2>
+                <p class="modal-subtitle">Please review your quiz details before creating</p>
+                <span class="close-modal" id="closeQuizPreviewModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="quiz-summary-grid">
+                    <div class="summary-group">
+                        <span class="label">TITLE</span>
+                        <span class="value" id="previewTitle">--</span>
+                    </div>
+                    <div class="summary-group">
+                        <span class="label">CLASS</span>
+                        <span class="value" id="previewClass">--</span>
+                    </div>
+                    <div class="summary-group">
+                        <span class="label">SUBJECT</span>
+                        <span class="value" id="previewSubject">--</span>
+                    </div>
+                    <div class="summary-group">
+                        <span class="label">TOTAL MARKS</span>
+                        <span class="value" id="previewTotalMarks">--</span>
+                    </div>
+                    <div class="summary-group">
+                        <span class="label">DURATION</span>
+                        <span class="value" id="previewDuration">--</span>
+                    </div>
+                    <div class="summary-group">
+                        <span class="label">QUESTIONS</span>
+                        <span class="value" id="previewTotalQuestions">--</span>
+                    </div>
+                    <div class="summary-group wide">
+                        <span class="label">START TIME</span>
+                        <span class="value" id="previewStartTime">--</span>
+                    </div>
+                    <div class="summary-group wide">
+                        <span class="label">END TIME</span>
+                        <span class="value" id="previewEndTime">--</span>
+                    </div>
+                </div>
+
+                <div class="questions-preview-section">
+                    <div class="section-header">
+                        <div class="header-left">
+                            <i class="fas fa-list-ul"></i>
+                            <h3>Questions Preview</h3>
+                        </div>
+                        <span class="count-badge" id="previewQuestionCountBadge">0 questions</span>
+                    </div>
+                    <div class="questions-list" id="quizPreviewQuestionsList">
+                        <!-- Questions will be injected here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" id="cancelQuizPreview">Cancel</button>
+                <button class="btn-create" id="confirmCreateQuizBtn">
+                    <i class="fas fa-check"></i> Create Quiz
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

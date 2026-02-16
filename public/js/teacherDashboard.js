@@ -22,6 +22,34 @@ class TeacherDashboard {
         }
     }
 
+    // Helper function to format session date
+    formatSessionDate(dateString) {
+        if (!dateString) return 'Scheduled';
+
+        try {
+            // Handle DD-MM-YYYY format from backend
+            let date;
+            if (dateString.includes('-') && dateString.split('-').length === 3) {
+                const parts = dateString.split('-');
+                if (parts[2].length === 4) {
+                    // DD-MM-YYYY format
+                    date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                } else {
+                    // Try standard format
+                    date = new Date(dateString);
+                }
+            } else {
+                date = new Date(dateString);
+            }
+
+            const options = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+            return date.toLocaleDateString('en-US', options);
+        } catch (error) {
+            console.error('Date formatting error:', error, 'Input:', dateString);
+            return dateString;
+        }
+    }
+
     init() {
         if (!this.token) {
             window.location.href = '/index.html';
@@ -221,6 +249,29 @@ class TeacherDashboard {
         // Create Quiz Form Toggle
         document.getElementById('createQuizBtn')?.addEventListener('click', () => {
             console.log('Create Quiz button clicked!');
+
+            // Reset form state for new quiz
+            const form = document.getElementById('createQuizForm');
+            if (form) {
+                form.reset();
+                this.clearFormValidation(form);
+                document.getElementById('quizId').value = '';
+
+                // Reset header and button text
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Create Quiz';
+
+                const headerText = document.querySelector('#quizFormHeader h2');
+                if (headerText) headerText.innerHTML = '<i class="fas fa-plus-circle"></i> Create New Quiz';
+
+                // Reset questions container
+                const container = document.getElementById('questionsContainer');
+                if (container) {
+                    container.innerHTML = '';
+                    this.addQuizQuestion();
+                }
+            }
+
             const quizMainCard = document.querySelector('.quiz-main-card');
 
             if (quizMainCard) {
@@ -234,6 +285,14 @@ class TeacherDashboard {
 
             document.getElementById('quizFormHeader').style.display = 'flex';
             document.getElementById('quizCreationForm').style.display = 'block';
+
+            // Set minimum date for inputs
+            this.setMinDateForQuizInputs();
+        });
+
+        // Save to Draft button
+        document.getElementById('saveDraftBtn')?.addEventListener('click', () => {
+            this.saveDraft();
         });
 
         // Back to Quiz List button
@@ -318,24 +377,277 @@ class TeacherDashboard {
         document.querySelectorAll('.modal').forEach(modal => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
-                    if (modal.id === 'deleteConfirmModal') {
-                        this.hideDeleteConfirmModal();
-                    } else {
-                        this.hideModal(modal.id);
-                    }
+                    this.hideModal(modal.id);
                 }
             });
         });
 
-        // Close delete modal on escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const deleteModal = document.getElementById('deleteConfirmModal');
-                if (deleteModal.classList.contains('show')) {
-                    this.hideDeleteConfirmModal();
-                }
-            }
+        // Publish Quiz button
+        document.getElementById('publishQuizBtn')?.addEventListener('click', () => {
+            this.showQuizPreviewBeforePublish();
         });
+
+        document.getElementById('closePublishQuizModal')?.addEventListener('click', () => {
+            this.hideModal('publishQuizModal');
+        });
+
+        document.getElementById('cancelPublishQuiz')?.addEventListener('click', () => {
+            this.hideModal('publishQuizModal');
+        });
+
+        document.getElementById('confirmPublishQuiz')?.addEventListener('click', () => {
+            this.publishQuiz();
+        });
+    }
+
+    async publishQuiz() {
+        const form = document.getElementById('createQuizForm');
+        const quizId = document.getElementById('quizId').value;
+
+        if (!quizId) {
+            this.showMessage('No quiz selected to publish', 'error');
+            this.hideModal('publishQuizModal');
+            return;
+        }
+
+        try {
+            this.showLoading();
+            this.hideModal('publishQuizModal');
+
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', {
+                status: 'published'
+            });
+
+            if (response.success) {
+                this.showMessage('Quiz published successfully.', 'success');
+
+                // Refresh quizzes and return to list
+                await this.refreshQuizzes();
+
+                // Hide form and show list
+                const quizMainCard = document.querySelector('.quiz-main-card');
+                if (quizMainCard) quizMainCard.style.display = 'flex';
+
+                const quizMainHeader = document.getElementById('quizMainPageHeader');
+                if (quizMainHeader) quizMainHeader.style.display = 'flex';
+
+                document.getElementById('quizFormHeader').style.display = 'none';
+                document.getElementById('quizCreationForm').style.display = 'none';
+
+                // Reset form
+                form.reset();
+                document.getElementById('quizId').value = '';
+
+            } else {
+                this.showMessage(response.message || 'Failed to publish quiz', 'error');
+            }
+        } catch (error) {
+            console.error('Error publishing quiz:', error);
+            this.showMessage('Error publishing quiz', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // Show Quiz Preview before publishing draft quiz
+    async showQuizPreviewBeforePublish() {
+        const form = document.getElementById('createQuizForm');
+        const quizId = document.getElementById('quizId').value;
+
+        if (!quizId) {
+            this.showMessage('No quiz selected to preview', 'error');
+            return;
+        }
+
+        try {
+            this.showLoading();
+
+            // Get current quiz data
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'GET');
+            
+            if (response.success && response.data) {
+                const quiz = response.data;
+                
+                // Prepare quiz data for preview
+                const quizData = {
+                    title: quiz.title,
+                    subject: quiz.subject,
+                    class: quiz.class,
+                    questions: quiz.questions,
+                    startTime: quiz.startTime,
+                    endTime: quiz.endTime,
+                    duration: quiz.duration,
+                    totalMarks: quiz.totalMarks
+                };
+
+                // Show preview modal with publish-specific buttons
+                this.showQuizPreviewModalForPublish(quizData, quizId);
+            } else {
+                this.showMessage('Failed to load quiz data', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading quiz for preview:', error);
+            this.showMessage('Error loading quiz data', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // Show Quiz Preview Modal specifically for publishing draft quizzes
+    showQuizPreviewModalForPublish(quizData, quizId) {
+        // Store quiz data for publishing
+        this.pendingPublishQuizData = {
+            quizData: quizData,
+            quizId: quizId
+        };
+
+        // Populate preview modal with quiz data
+        const title = quizData.title || 'Untitled Quiz';
+        const subject = quizData.subject || 'No Subject';
+        const className = quizData.class || 'No Class';
+        const duration = quizData.duration || 'Not Set';
+        const totalMarks = quizData.totalMarks || quizData.questions?.length || 0;
+        
+        let startTime = 'Not Set';
+        let endTime = 'Not Set';
+        
+        if (quizData.startTime) {
+            startTime = moment(quizData.startTime).format('MMM D, YYYY h:mm A');
+        }
+        if (quizData.endTime) {
+            endTime = moment(quizData.endTime).format('MMM D, YYYY h:mm A');
+        }
+
+        // Update preview modal content
+        document.getElementById('previewTitle').textContent = title;
+        document.getElementById('previewSubject').textContent = subject;
+        document.getElementById('previewClass').textContent = className;
+        document.getElementById('previewTotalMarks').textContent = totalMarks;
+        document.getElementById('previewDuration').textContent = parseInt(duration) + ' mins';
+        document.getElementById('previewStartTime').textContent = startTime;
+        document.getElementById('previewEndTime').textContent = endTime;
+
+        // Populate Questions
+        const questions = quizData.questions || [];
+        document.getElementById('previewTotalQuestions').textContent = questions.length;
+
+        const questionsListContainer = document.getElementById('quizPreviewQuestionsList');
+        if (questionsListContainer) {
+            questionsListContainer.innerHTML = '';
+
+            questions.forEach((q, index) => {
+                const questionCard = document.createElement('div');
+                questionCard.className = 'question-preview-card';
+
+                // Identify correct option
+                const correctOptionKey = (q.correctOption || q.correct || '').toLowerCase(); // 'a', 'b', 'c', 'd'
+
+                // Generate options HTML
+                const optionsHtml = q.options.map((opt, i) => {
+                    const currentKey = String.fromCharCode(97 + i); // 'a', 'b', 'c', 'd'
+                    const isCorrect = currentKey === correctOptionKey;
+
+                    return `
+                        <div class="option-preview-item ${isCorrect ? 'correct' : ''}">
+                            <span class="opt-label">${currentKey.toUpperCase()}</span>
+                            <span class="opt-text">${opt}</span>
+                            ${isCorrect ? '<i class="fas fa-check-circle" style="color: #15803d; margin-left: auto;"></i>' : ''}
+                        </div>
+                    `;
+                }).join('');
+
+                questionCard.innerHTML = `
+                    <div class="question-preview-header">
+                        <span class="q-num-circle">${index + 1}</span>
+                        <span>${q.question}</span>
+                    </div>
+                    <div class="options-preview-grid">
+                        ${optionsHtml}
+                    </div>
+                `;
+
+                questionsListContainer.appendChild(questionCard);
+            });
+        }
+
+        // Update modal buttons for publish flow
+        const modalFooter = document.querySelector('#quizPreviewModal .modal-footer');
+        if (modalFooter) {
+            modalFooter.innerHTML = `
+                <button class="btn btn-outline" id="backToEditFromPreview">
+                    <i class="fas fa-edit"></i> Back to Edit
+                </button>
+                <button class="btn btn-primary" id="confirmPublishFromPreview">
+                    <i class="fas fa-rocket"></i> Confirm Publish
+                </button>
+            `;
+        }
+
+        // Add event listeners for the new buttons
+        document.getElementById('backToEditFromPreview')?.addEventListener('click', () => {
+            this.hideModal('quizPreviewModal');
+        });
+
+        document.getElementById('confirmPublishFromPreview')?.addEventListener('click', () => {
+            this.confirmPublishFromPreview();
+        });
+
+        // Show the modal
+        this.showModal('quizPreviewModal');
+    }
+
+    // Confirm publish after preview
+    async confirmPublishFromPreview() {
+        if (!this.pendingPublishQuizData) {
+            this.showMessage('No quiz data available', 'error');
+            return;
+        }
+
+        const { quizId } = this.pendingPublishQuizData;
+
+        try {
+            this.showLoading();
+            this.hideModal('quizPreviewModal');
+
+            const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', {
+                status: 'published'
+            });
+
+            if (response.success) {
+                this.showMessage('Quiz published successfully.', 'success');
+
+                // Refresh quizzes and return to list
+                await this.refreshQuizzes();
+
+                // Hide form and show list
+                const quizMainCard = document.querySelector('.quiz-main-card');
+                if (quizMainCard) quizMainCard.style.display = 'flex';
+
+                const quizMainHeader = document.getElementById('quizMainPageHeader');
+                if (quizMainHeader) quizMainHeader.style.display = 'flex';
+
+                document.getElementById('quizFormHeader').style.display = 'none';
+                document.getElementById('quizCreationForm').style.display = 'none';
+
+                // Reset form
+                const form = document.getElementById('createQuizForm');
+                if (form) {
+                    form.reset();
+                    document.getElementById('quizId').value = '';
+                }
+
+                // Clear pending data
+                this.pendingPublishQuizData = null;
+
+            } else {
+                this.showMessage(response.message || 'Failed to publish quiz', 'error');
+            }
+        } catch (error) {
+            console.error('Error publishing quiz:', error);
+            this.showMessage('Error publishing quiz', 'error');
+        } finally {
+            this.hideLoading();
+        }
     }
 
     setupFormHandlers() {
@@ -376,6 +688,26 @@ class TeacherDashboard {
         document.getElementById('marksForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.addMarks(e.target);
+        });
+
+        // Setup Validation Listeners
+        this.setupValidationListeners();
+    }
+
+    setupValidationListeners() {
+        const form = document.getElementById('createQuizForm');
+        if (!form) return;
+
+        form.addEventListener('input', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                this.clearFieldValidation(e.target);
+            }
+        });
+
+        form.addEventListener('change', (e) => {
+            if (e.target.tagName === 'SELECT' || e.target.type === 'datetime-local') {
+                this.clearFieldValidation(e.target);
+            }
         });
     }
 
@@ -456,7 +788,8 @@ class TeacherDashboard {
             const response = await this.apiCall('/quizzes', 'GET');
             if (response.success) {
                 this.displayQuizzes(response.data);
-                this.updateRecentQuizzes(response.data.slice(0, 5));
+                // Show all quizzes (drafts and published) in recent section
+                this.updateRecentQuizzes(response.data.slice(0, 3));
             } else {
                 console.error('Failed to load quizzes:', response.message);
                 this.showMessage('Failed to load quizzes from database', 'error');
@@ -567,122 +900,111 @@ class TeacherDashboard {
             return;
         }
 
+        // Show all quizzes (drafts and published) in unified list
+        const allQuizzes = quizzes;
+
         // Update count subtitle
         if (countSubtitle) {
-            countSubtitle.textContent = `${quizzes.length} active quizzes`;
+            const totalCount = allQuizzes.length;
+            countSubtitle.textContent = `${totalCount} quiz${totalCount !== 1 ? 'zes' : ''}`;
         }
 
-        if (quizzes.length === 0) {
+        if (allQuizzes.length === 0) {
             list.innerHTML = '<p class="empty">No quizzes created yet</p>';
             return;
         }
 
-        console.log('Creating quiz items for', quizzes.length, 'quizzes');
-        list.innerHTML = quizzes.map(quiz => {
-            // Format Dates
+        console.log('Creating quiz items for', allQuizzes.length, 'quizzes');
+        list.innerHTML = allQuizzes.map(quiz => {
             const createdDate = new Date(quiz.createdAt);
-            const formattedCreatedDate = createdDate.toLocaleDateString('en-US'); // e.g., 12/22/2025
-
             const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
             const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
 
-            // Format Schedule Dates (e.g., Oct 12, 10:00 AM)
-            const scheduleOptions = { month: 'short', day: 'numeric' };
-            const timeOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+            // Format date for created: Feb 13, 2026
+            const formattedCreatedDate = createdDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
 
-            // Custom formatter for "Month Day, Time"
-            const formatSchedule = (date) => {
+            // Format date-time for schedule: Feb 19, 2026, 06:48 PM
+            const formatScheduleDateTime = (date) => {
                 if (!date) return 'Not set';
-                // e.g. Oct 12
-                const datePart = date.toLocaleDateString('en-US', scheduleOptions);
-                // e.g. 10:00 AM
-                const timePart = date.toLocaleTimeString('en-US', timeOptions);
-                return `${datePart}, ${timePart}`; // Note: Guide image shows "Oct 12, 10:00 AM" but let's stick to standard locale for now or manual
+                return date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                }).replace(',', ',').replace(' at ', ', ');
             };
 
-            // Manual format to match image "12/10/2023" for created?
-            // Image shows "12/22/2025" for Created.
-            const formattedCreated = createdDate.toLocaleDateString('en-US');
-
-            const formattedStart = formatSchedule(startTime);
-            const formattedEnd = formatSchedule(endTime);
-
-            // Duration
+            const formattedStart = formatScheduleDateTime(startTime);
+            const formattedEnd = formatScheduleDateTime(endTime);
             const duration = quiz.duration ? `${quiz.duration} min` : 'Not set';
 
+            // Status
+            const isDraft = quiz.status === 'draft';
+            const statusClass = isDraft ? 'draft' : 'published';
+            const statusText = isDraft ? 'DRAFT' : 'PUBLISHED';
+
             return `
-            <div class="quiz-item" data-quiz-item-id="${quiz._id}">
-                <!-- 1. Header Section -->
-                <div class="quiz-header">
-                    <div class="quiz-identity">
-                        <div class="quiz-icon-container">
-                            <i class="fas fa-question-circle"></i>
+            <div class="quiz-card" data-quiz-item-id="${quiz._id}">
+                <div class="quiz-card-header">
+                    <div class="quiz-icon-section">
+                        <div class="quiz-icon">
+                            <i class="fas fa-question"></i>
                         </div>
-                        <div class="quiz-info">
+                        <div class="quiz-title-info">
                             <h3 class="quiz-title">${quiz.title}</h3>
-                            <div class="quiz-meta">
-                                <span class="quiz-class">${quiz.class || 'No class'}</span>
-                                <span class="separator">•</span>
-                                <span class="quiz-subject">${quiz.subject || 'General'}</span>
-                            </div>
+                            <p class="quiz-subtitle">${quiz.class || 'No class'} • ${quiz.subject || 'General'}</p>
                         </div>
                     </div>
                     <div class="quiz-actions">
-                        <button class="quiz-action-btn quiz-edit-btn" onclick="dashboard.editQuiz('${quiz._id}')">
+                        <button class="btn-status ${statusClass}">${statusText}</button>
+                        <button class="btn-view-attempts" onclick="dashboard.viewQuizAttempts('${quiz._id}')" title="View Attempts">
+                            <i class="fas fa-chart-bar"></i>
+                        </button>
+                        <button class="btn-edit" onclick="dashboard.editQuiz('${quiz._id}')">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="quiz-action-btn quiz-delete-btn" onclick="dashboard.deleteQuiz('${quiz._id}')">
+                        <button class="btn-delete" onclick="dashboard.deleteQuiz('${quiz._id}')">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
-
-                <!-- 2. Middle Information Boxes -->
-                <div class="quiz-details-section">
-                    <div class="quiz-details-row">
-                        <!-- Questions Box -->
-                        <div class="quiz-info-box">
-                            <div class="info-box-icon"><i class="fas fa-question-circle"></i></div>
-                            <div class="info-box-content">
-                                <div class="info-box-value">${quiz.questions ? quiz.questions.length : 0}</div>
-                                <div class="info-box-label">Questions</div>
-                            </div>
+                
+                <div class="quiz-info-section">
+                    <div class="info-card">
+                        <div class="info-text">
+                            <p class="info-label">QUESTIONS</p>
+                            <p class="info-value">${quiz.questions ? quiz.questions.length : 0}</p>
                         </div>
-                        <!-- Created Date Box (Moved from bottom) -->
-                        <div class="quiz-info-box">
-                            <div class="info-box-icon"><i class="fas fa-calendar"></i></div>
-                            <div class="info-box-content">
-                                <div class="info-box-value">${formattedCreated}</div>
-                                <div class="info-box-label">Created</div>
-                            </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-text">
+                            <p class="info-label">DURATION</p>
+                            <p class="info-value">${duration}</p>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-text">
+                            <p class="info-label">CREATED</p>
+                            <p class="info-value">${formattedCreatedDate}</p>
                         </div>
                     </div>
                 </div>
-
-                <!-- 3. Bottom Schedule Section -->
+                
                 <div class="quiz-schedule-container">
-                    <!-- Start Time -->
-                    <div class="schedule-item">
-                        <div class="schedule-icon"><i class="fas fa-play"></i></div>
-                        <div class="schedule-content">
-                            <div class="schedule-label">Start</div>
-                            <div class="schedule-value">${formattedStart}</div>
+                    <div class="schedule-content">
+                        <div class="schedule-item">
+                            <span class="schedule-label">START</span>
+                            <span class="schedule-value">${formattedStart}</span>
                         </div>
-                    </div>
-                    <!-- End Time -->
-                    <div class="schedule-item">
-                        <div class="schedule-icon"><i class="fas fa-stop"></i></div>
-                        <div class="schedule-content">
-                            <div class="schedule-label">End</div>
-                            <div class="schedule-value">${formattedEnd}</div>
-                        </div>
-                    </div>
-                    <!-- Duration -->
-                    <div class="schedule-item">
-                        <div class="schedule-icon"><i class="fas fa-clock"></i></div>
-                        <div class="schedule-content">
-                            <div class="schedule-label">Duration</div>
-                            <div class="schedule-value">${duration}</div>
+                        <div class="schedule-item">
+                            <span class="schedule-label">END</span>
+                            <span class="schedule-value">${formattedEnd}</span>
                         </div>
                     </div>
                 </div>
@@ -947,11 +1269,7 @@ class TeacherDashboard {
         container.innerHTML = holidays.map(holiday => `
         <div class="holiday-item-small clickable-item" data-holiday-id="${holiday._id}">
             <h4><i class="fas fa-calendar-alt"></i> ${holiday.title || holiday.reason || 'Holiday'}</h4>
-            <p>${new Date(holiday.startDate || holiday.date).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        })} • ${holiday.reason === 'public' || holiday.reason === 'Public Holiday' ? 'Public' : 'Personal'} • ${holiday.duration || 1} day(s)</p>
+            <p>${this.formatSessionDate(holiday.startDate || holiday.date)} • ${holiday.reason === 'public' || holiday.reason === 'Public Holiday' ? 'Public' : 'Personal'} • ${holiday.duration || 1} day(s)</p>
         </div>
     `).join('');
 
@@ -967,22 +1285,135 @@ class TeacherDashboard {
         const container = document.getElementById('recentQuizzes');
         if (!container) return;
 
+        // Show all quizzes (drafts and published) in recent section
         if (quizzes.length === 0) {
             container.innerHTML = '<p class="empty">No quizzes created yet</p>';
             return;
         }
 
-        container.innerHTML = quizzes.map(quiz => `
+        container.innerHTML = quizzes.map(quiz => {
+            const isDraft = quiz.status === 'draft';
+            const statusBadge = isDraft ?
+                '<span class="status-badge draft-badge">Draft</span>' :
+                '<span class="status-badge published-badge">Published</span>';
+
+            return `
         <div class="quiz-item-small clickable-item" data-quiz-id="${quiz._id}">
-            <h4><i class="fas fa-question-circle"></i> ${quiz.title}</h4>
-            <p> ${quiz.subject || 'General'} • ${quiz.questions ? quiz.questions.length : 0} questions • ${quiz.totalMarks || (quiz.questions ? quiz.questions.length : 0)} marks</p>
+            <div class="quiz-item-header">
+                <h4><i class="fas fa-question-circle"></i> ${(quiz.title || 'Quiz').toUpperCase()}</h4>
+                ${statusBadge}
+            </div>
+            <p>${(quiz.subject || 'General').toUpperCase()} • ${quiz.class || 'No class'} • ${quiz.questions ? quiz.questions.length : 0} questions</p>
         </div>
-    `).join('');
+    `;
+        }).join('');
 
         // Add click handlers
         container.querySelectorAll('.quiz-item-small').forEach(item => {
             item.addEventListener('click', () => {
                 this.navigateToQuizPage(item.dataset.quizId);
+            });
+        });
+    }
+
+    enableDayEdit(day) {
+        // Show Save button when teacher edits any day
+        const saveBtn = document.getElementById("saveAvailabilityBtn");
+        if (saveBtn) saveBtn.style.display = "block";
+
+        const row = document.querySelector(`.availability-row[data-day="${day}"]`);
+        if (!row) return;
+
+        const timeDiv = row.querySelector(".availability-time");
+        if (!timeDiv) return;
+
+        let startTime = timeDiv.dataset.start || "00:00";
+        let endTime = timeDiv.dataset.end || "00:00";
+
+        // If not set, show blank inputs
+        if (startTime === "00:00") startTime = "";
+        if (endTime === "00:00") endTime = "";
+
+        timeDiv.innerHTML = `
+    <div class="time-input-group">
+        <input type="time" class="time-picker"
+               data-day="${day}" data-type="start-time"
+               value="${startTime}" step="60">
+
+        <span class="time-separator">-</span>
+
+        <input type="time" class="time-picker"
+               data-day="${day}" data-type="end-time"
+               value="${endTime}" step="60">
+
+        <button class="btn-clear-time"
+                onclick="dashboard.clearDayTime('${day}')"
+                title="Clear time">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+`;
+    }
+
+    eraseDayTime(day) {
+        // Update local data immediately to show "Not set"
+        const dayIndex = this.currentAvailabilityData.findIndex(item => item.day === day);
+        if (dayIndex !== -1) {
+            this.currentAvailabilityData[dayIndex].startTime = "00:00";
+            this.currentAvailabilityData[dayIndex].endTime = "00:00";
+        }
+
+        // Update UI immediately to show "Not set"
+        const row = document.querySelector(`.availability-row[data-day="${day}"]`);
+        if (row) {
+            const timeDiv = row.querySelector(".availability-time");
+            if (timeDiv) {
+                timeDiv.className = "availability-time not-set";
+                timeDiv.setAttribute("data-start", "00:00");
+                timeDiv.setAttribute("data-end", "00:00");
+                timeDiv.textContent = "Not set";
+            }
+        }
+
+        // Show save button
+        const saveBtn = document.getElementById("saveAvailabilityBtn");
+        if (saveBtn) saveBtn.style.display = "block";
+    }
+
+    clearDayTime(day) {
+        const startInput = document.querySelector(`input[data-type="start-time"][data-day="${day}"]`);
+        const endInput = document.querySelector(`input[data-type="end-time"][data-day="${day}"]`);
+
+        if (startInput) startInput.value = "";
+        if (endInput) endInput.value = "";
+    }
+
+    updateStats(stats) {
+        document.getElementById('totalStudents').textContent = stats.totalStudents || 0;
+        document.getElementById('totalQuizzes').textContent = stats.totalQuizzes || 0;
+        document.getElementById('totalSessions').textContent = stats.totalSessions || 0;
+    }
+
+    updateRecentHolidays(holidays) {
+        const container = document.getElementById('recentHolidays');
+        if (!container) return;
+
+        if (holidays.length === 0) {
+            container.innerHTML = '<p class="empty">No holidays scheduled</p>';
+            return;
+        }
+
+        container.innerHTML = holidays.map(holiday => `
+    <div class="holiday-item-small clickable-item" data-holiday-id="${holiday._id}">
+        <h4><i class="fas fa-calendar-alt"></i> ${holiday.title || holiday.reason || 'Holiday'}</h4>
+        <p>${this.formatSessionDate(holiday.startDate || holiday.date)} • ${holiday.reason === 'public' || holiday.reason === 'Public Holiday' ? 'Public' : 'Personal'} • ${holiday.duration || 1} day(s)</p>
+    </div>
+`).join('');
+
+        // Add click handlers
+        container.querySelectorAll('.holiday-item-small').forEach(item => {
+            item.addEventListener('click', () => {
+                this.navigateToHolidayPage(item.dataset.holidayId);
             });
         });
     }
@@ -998,15 +1429,40 @@ class TeacherDashboard {
 
         container.innerHTML = sessions.map(session => `
         <div class="session-item-small clickable-item" data-session-id="${session._id}">
-            <h4><i class="fas fa-clock"></i> ${session.title}</h4>
-            <p>${session.date || 'Scheduled'} • ${session.day || 'Weekday'} • ${session.sessionDuration || 60} min</p>
+            <div class="session-item-icon-wrapper session-icon-blue">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="session-item-content">
+                <h4>${(session.title || 'Session').toLowerCase()}</h4>
+                <p>${this.formatSessionDate(session.date)}</p>
+                <span class="session-item-description">${session.description || ''}</span>
+            </div>
+            <div class="session-item-actions">
+                <div class="session-item-icon-wrapper session-icon-red delete-session-btn" data-session-id="${session._id}">
+                    <i class="fas fa-trash"></i>
+                </div>
+            </div>
         </div>
     `).join('');
 
-        // Add click handlers
+        // Add click handlers for navigation
         container.querySelectorAll('.session-item-small').forEach(item => {
-            item.addEventListener('click', () => {
-                this.navigateToSessionPage(item.dataset.sessionId);
+            item.addEventListener('click', (event) => {
+                // Prevent navigation if delete button is clicked
+                if (!event.target.closest('.delete-session-btn')) {
+                    this.navigateToSessionPage(item.dataset.sessionId);
+                }
+            });
+        });
+
+        // Add click handlers for delete buttons
+        container.querySelectorAll('.delete-session-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation(); // Prevent triggering parent item's click
+                const sessionId = button.dataset.sessionId;
+                if (confirm('Are you sure you want to delete this session?')) {
+                    this.deleteSession(sessionId);
+                }
             });
         });
     }
@@ -1015,16 +1471,12 @@ class TeacherDashboard {
         // Switch to quiz page
         this.switchPage('quiz');
 
-        // Highlight the specific quiz if ID is provided
+        // Scroll to the specific quiz if ID is provided (no highlight)
         if (quizId) {
             setTimeout(() => {
                 const quizElement = document.querySelector(`[data-quiz-item-id="${quizId}"]`);
                 if (quizElement) {
                     quizElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    quizElement.classList.add('highlighted');
-                    setTimeout(() => {
-                        quizElement.classList.remove('highlighted');
-                    }, 2000);
                 }
             }, 100);
         }
@@ -1034,16 +1486,12 @@ class TeacherDashboard {
         // Switch to session page
         this.switchPage('sessions');
 
-        // Highlight the specific session if ID is provided
+        // Scroll to the specific session if ID is provided (no highlight)
         if (sessionId) {
             setTimeout(() => {
                 const sessionElement = document.querySelector(`[data-session-item-id="${sessionId}"]`);
                 if (sessionElement) {
                     sessionElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    sessionElement.classList.add('highlighted');
-                    setTimeout(() => {
-                        sessionElement.classList.remove('highlighted');
-                    }, 2000);
                 }
             }, 100);
         }
@@ -1053,16 +1501,12 @@ class TeacherDashboard {
         // Switch to holiday page
         this.switchPage('holidays');
 
-        // Highlight the specific holiday if ID is provided
+        // Scroll to the specific holiday if ID is provided (no highlight)
         if (holidayId) {
             setTimeout(() => {
                 const holidayElement = document.querySelector(`[data-holiday-item-id="${holidayId}"]`);
                 if (holidayElement) {
                     holidayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    holidayElement.classList.add('highlighted');
-                    setTimeout(() => {
-                        holidayElement.classList.remove('highlighted');
-                    }, 2000);
                 }
             }, 100);
         }
@@ -1136,6 +1580,11 @@ class TeacherDashboard {
         const quizId = formData.get('quizId');
         const isEdit = !!quizId; // Convert to boolean
 
+        // Validate form
+        if (!this.validateQuizForm(form)) {
+            return;
+        }
+
         // Collect questions properly
         const questions = [];
         const questionElements = form.querySelectorAll('.question-item');
@@ -1178,6 +1627,52 @@ class TeacherDashboard {
             }
         }
 
+        // Check if this is editing a quiz (Update Quiz button)
+        if (isEdit) {
+            // Get the original quiz status to preserve it
+            const originalStatus = document.getElementById('originalQuizStatus')?.value ;
+            
+            // For editing existing quizzes, update directly
+            const quizData = {
+                title: formData.get('title'),
+                subject: formData.get('subject') || 'General Knowledge',
+                class: formData.get('class') || '',
+                totalMarks: questions.length || 0,
+                startTime: startTimeStr || '',
+                endTime: endTimeStr || '',
+                duration: parseInt(formData.get('duration')) || 30,
+                questions: questions,
+                status: originalStatus // Preserve original status (Draft stays Draft, Published stays Published)
+            };
+
+            try {
+                this.showLoading();
+
+                const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', quizData);
+
+                if (response.success) {
+                    this.showMessage('Quiz updated successfully.', 'success');
+
+                    // Always redirect to Quiz Main Page after Update Quiz
+                    this.backToQuizList();
+
+                    // Refresh quizzes to show the updated list
+                    await this.loadQuizzes();
+
+                } else {
+                    this.showMessage(response.message || 'Failed to update quiz', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating quiz:', error);
+                this.showMessage('Error updating quiz', 'error');
+            } finally {
+                this.hideLoading();
+            }
+
+            return;
+        }
+
+        // For new quizzes, show preview modal
         const quizData = {
             title: formData.get('title'),
             description: '',
@@ -1186,15 +1681,17 @@ class TeacherDashboard {
             totalMarks: questions.length || 0,
             startTime: startTimeStr || '',
             endTime: endTimeStr || '',
-            duration: formData.get('duration') || 30,
-            questions: questions
+            duration: parseInt(formData.get('duration')) || 30,
+            questions: questions,
+            status: 'published' // Set status to published when creating a new quiz
         };
 
         // Validate basic fields
-        if (!quizData.title || !quizData.subject || !quizData.duration) {
+        // Validation already handled by validateQuizForm
+        /* if (!quizData.title || !quizData.subject || !quizData.duration) {
             this.showMessage('Please fill in all required fields (Title, Subject, Duration)', 'error');
             return;
-        }
+        } */
 
         if (quizData.questions.length === 0) {
             this.showMessage('Please add at least one question', 'error');
@@ -1234,6 +1731,135 @@ class TeacherDashboard {
     }
 
 
+    clearFormValidation(form) {
+        if (!form) return;
+        form.querySelectorAll('.validation-message').forEach(msg => {
+            msg.textContent = '';
+            msg.style.display = 'block'; // Ensure it's visible when needed
+        });
+        form.querySelectorAll('.error').forEach(field => field.classList.remove('error'));
+    }
+
+    showFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.classList.add('error');
+            // Try to find the validation message span
+            let msg = field.nextElementSibling;
+            if (!msg || !msg.classList.contains('validation-message')) {
+                // Try parent's validation message (for grouped inputs)
+                msg = field.parentElement.querySelector('.validation-message');
+            }
+
+            if (msg) {
+                msg.textContent = message;
+                msg.style.color = '#dc3545'; // Ensure red color
+            } else {
+                console.warn(`Validation message element not found for field: ${fieldId}`);
+            }
+        } else {
+            console.warn(`Field not found: ${fieldId}`);
+        }
+    }
+
+    clearFieldValidation(field) {
+        if (!field) return;
+        field.classList.remove('error');
+        let msg = field.nextElementSibling;
+        if (!msg || !msg.classList.contains('validation-message')) {
+            msg = field.parentElement.querySelector('.validation-message');
+        }
+        if (msg) msg.textContent = '';
+    }
+
+    validateQuizForm(form) {
+        let isValid = true;
+        this.clearFormValidation(form);
+
+        // Basic Info
+        const title = form.querySelector('#quizTitle');
+        if (!title.value.trim()) {
+            this.showFieldError('quizTitle', 'Quiz Title is required');
+            isValid = false;
+        }
+
+        const quizClass = form.querySelector('#quizClass');
+        if (!quizClass.value) {
+            this.showFieldError('quizClass', 'Class is required');
+            isValid = false;
+        }
+
+        const subject = form.querySelector('#quizSubject');
+        if (!subject.value.trim()) {
+            this.showFieldError('quizSubject', 'Subject is required');
+            isValid = false;
+        }
+
+        // Schedule
+        const startTime = form.querySelector('#quizStartTime');
+        if (!startTime.value) {
+            this.showFieldError('quizStartTime', 'Start Time is required');
+            isValid = false;
+        }
+
+        const endTime = form.querySelector('#quizEndTime');
+        if (!endTime.value) {
+            this.showFieldError('quizEndTime', 'End Time is required');
+            isValid = false;
+        } else if (startTime.value && new Date(startTime.value) >= new Date(endTime.value)) {
+            this.showFieldError('quizEndTime', 'End Time must be after Start Time');
+            isValid = false;
+        }
+
+        const duration = form.querySelector('#quizDuration');
+        if (!duration.value || parseInt(duration.value) <= 0) {
+            this.showFieldError('quizDuration', 'Duration must be greater than 0');
+            isValid = false;
+        }
+
+        // Questions
+        const questions = form.querySelectorAll('.question-item');
+        if (questions.length === 0) {
+            this.showMessage('Please add at least one question', 'error');
+            isValid = false;
+        }
+
+        questions.forEach((question, index) => {
+            const questionInput = question.querySelector('input[name="questions[]"]');
+            if (questionInput && !questionInput.value.trim()) {
+                questionInput.classList.add('error');
+                const msg = questionInput.nextElementSibling;
+                if (msg && msg.classList.contains('validation-message')) {
+                    msg.textContent = 'Question text is required';
+                }
+                isValid = false;
+            }
+
+            const options = question.querySelectorAll('input[name^="options"]');
+            options.forEach((option) => {
+                if (!option.value.trim()) {
+                    option.classList.add('error');
+                    const msg = option.nextElementSibling;
+                    if (msg && msg.classList.contains('validation-message')) {
+                        msg.textContent = 'Option text is required';
+                    }
+                    isValid = false;
+                }
+            });
+
+            const answer = question.querySelector('select[name="answers[]"]');
+            if (answer && !answer.value) {
+                answer.classList.add('error');
+                const msg = answer.nextElementSibling;
+                if (msg && msg.classList.contains('validation-message')) {
+                    msg.textContent = 'Correct answer is required';
+                }
+                isValid = false;
+            }
+        });
+        return isValid;
+    }
+
     addQuizQuestion(data = null) {
         const container = document.getElementById('questionsContainer');
         const questionCount = container.querySelectorAll('.question-item').length + 1;
@@ -1248,22 +1874,36 @@ class TeacherDashboard {
                 </button>
             </div>
             <div class="question-content">
-                <input type="text" name="questions[]" placeholder="Question" value="${data ? data.question : ''}" required>
+                <input type="text" name="questions[]" placeholder="Question" value="${data ? data.question : ''}">
+                <span class="validation-message"></span>
                 <div class="options-grid">
-                    <input type="text" name="options${questionCount}[]" placeholder="Option A" value="${data && data.options && data.options[0] ? data.options[0] : ''}" required>
-                    <input type="text" name="options${questionCount}[]" placeholder="Option B" value="${data && data.options && data.options[1] ? data.options[1] : ''}" required>
-                    <input type="text" name="options${questionCount}[]" placeholder="Option C" value="${data && data.options && data.options[2] ? data.options[2] : ''}" required>
-                    <input type="text" name="options${questionCount}[]" placeholder="Option D" value="${data && data.options && data.options[3] ? data.options[3] : ''}" required>
+                    <div>
+                        <input type="text" name="options${questionCount}[]" placeholder="Option A" value="${data && data.options && data.options[0] ? data.options[0] : ''}">
+                        <span class="validation-message"></span>
+                    </div>
+                    <div>
+                        <input type="text" name="options${questionCount}[]" placeholder="Option B" value="${data && data.options && data.options[1] ? data.options[1] : ''}">
+                        <span class="validation-message"></span>
+                    </div>
+                    <div>
+                        <input type="text" name="options${questionCount}[]" placeholder="Option C" value="${data && data.options && data.options[2] ? data.options[2] : ''}">
+                        <span class="validation-message"></span>
+                    </div>
+                    <div>
+                        <input type="text" name="options${questionCount}[]" placeholder="Option D" value="${data && data.options && data.options[3] ? data.options[3] : ''}">
+                        <span class="validation-message"></span>
+                    </div>
                 </div>
                 <div class="answer-section">
                     <label>Correct Answer:</label>
-                    <select name="answers[]" required>
+                    <select name="answers[]">
                         <option value="">Select correct answer</option>
                         <option value="0" ${data && data.correctOption === 'a' ? 'selected' : ''}>A</option>
                         <option value="1" ${data && data.correctOption === 'b' ? 'selected' : ''}>B</option>
                         <option value="2" ${data && data.correctOption === 'c' ? 'selected' : ''}>C</option>
                         <option value="3" ${data && data.correctOption === 'd' ? 'selected' : ''}>D</option>
                     </select>
+                    <span class="validation-message"></span>
                 </div>
             </div>
         `;
@@ -1346,12 +1986,23 @@ class TeacherDashboard {
     showModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) {
-            modal.classList.add('show');
+            document.body.style.overflow = 'hidden'; // Prevent scrolling when modal is open
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                modal.classList.add('active');
+            }, 10);
         }
     }
 
     hideModal(modalId) {
-        document.getElementById(modalId).classList.remove('show');
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+                document.body.style.overflow = ''; // Re-enable scrolling
+            }, 300); // Match this with CSS transition duration
+        }
 
         // Reset Add Student form when closing
         if (modalId === 'addStudentModal') {
@@ -2180,6 +2831,7 @@ class TeacherDashboard {
 
         // Reset form first
         form.reset();
+        this.clearFormValidation(form);
 
         // 1. Populate Basic Info
         document.getElementById('quizId').value = quiz._id;
@@ -2187,6 +2839,20 @@ class TeacherDashboard {
         document.getElementById('quizSubject').value = quiz.subject || '';
         document.getElementById('quizClass').value = quiz.class || '';
         document.getElementById('quizDuration').value = quiz.duration || '';
+        
+        // Store original quiz status to preserve it during updates
+        const originalStatusInput = document.getElementById('originalQuizStatus');
+        if (originalStatusInput) {
+            originalStatusInput.value = quiz.status;
+        } else {
+            // Create hidden field if it doesn't exist
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.id = 'originalQuizStatus';
+            hiddenInput.name = 'originalQuizStatus';
+            hiddenInput.value = quiz.status;
+            form.appendChild(hiddenInput);
+        }
 
         // 2. Populate Dates
         if (quiz.startTime) {
@@ -2224,15 +2890,32 @@ class TeacherDashboard {
         document.getElementById('quizFormHeader').style.display = 'flex';
         document.getElementById('quizCreationForm').style.display = 'block';
 
-        // 5. Update Header and Button Text
+        // 5. Update Header and Button Text based on quiz status
         const headerText = document.querySelector('#quizFormHeader h2');
-        if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
+        const submitBtn = form.querySelector('#createUpdateQuizBtn');
+        const saveDraftBtn = document.getElementById('saveDraftBtn');
+        const publishBtn = document.getElementById('publishQuizBtn');
 
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
+        const isDraft = quiz.status === 'draft';
+
+        if (isDraft) {
+            // For draft quizzes: Cancel, Update Quiz, Publish Quiz
+            if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
+            if (saveDraftBtn) saveDraftBtn.style.display = 'none';
+            if (publishBtn) publishBtn.style.display = 'inline-block';
+        } else {
+            // For published quizzes: Cancel, Save to Draft, Update Quiz
+            if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
+            if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+            if (publishBtn) publishBtn.style.display = 'none';
+        }
 
         // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        this.setMinDateForQuizInputs();
     }
 
     formatDateForInput(dateString) {
@@ -2241,6 +2924,38 @@ class TeacherDashboard {
         // Format: YYYY-MM-DDTHH:mm
         const pad = (num) => num.toString().padStart(2, '0');
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    setMinDateForQuizInputs() {
+        const startInput = document.getElementById('quizStartTime');
+        const endInput = document.getElementById('quizEndTime');
+
+        if (!startInput || !endInput) return;
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const currentDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+
+        startInput.min = currentDateTime;
+        endInput.min = currentDateTime;
+
+        // Ensure end time min is at least start time
+        startInput.addEventListener('input', () => {
+            if (startInput.value) {
+                endInput.min = startInput.value;
+            } else {
+                endInput.min = currentDateTime;
+            }
+        });
+
+        // Initial check if value exists
+        if (startInput.value) {
+            endInput.min = startInput.value;
+        }
     }
 
     showEditProfileModal() {
@@ -2702,7 +3417,7 @@ class TeacherDashboard {
                 this.allSessions = response.sessions;
                 this.displaySessions(response.sessions, response.pagination);
 
-                this.updateRecentSessions(response.sessions.slice(0, 2));
+                this.updateRecentSessions(response.sessions.slice(0, 3));
             } else {
                 this.showMessage(response.message || 'Failed to load sessions', 'error');
                 this.displaySessions([], { totalSessions: 0, currentPage: 1, totalPages: 0 });
@@ -2848,12 +3563,12 @@ class TeacherDashboard {
                                                         data-session-id="${session.sessionId}"
                                                         data-start-utc="${slot.startUTC}"
                                                         data-end-utc="${slot.endUTC}"
-                                                        data-student-id="${slot.bookedBy || slot.bookedBy}"
+                                                        data-student-id="${typeof slot.bookedBy === 'object' ? slot.bookedBy._id || slot.bookedBy.id : slot.bookedBy}"
                                                         data-booked-by-teacher="${slot.bookedByTeacher ? 'true' : 'false'}"
                                                         ${slot.bookedByTeacher ? `title="This slot was assigned by you"` : ''}
                                                     `
                         }
-                                            onclick="dashboard.handleSlotClick(this, '${slot.isBooked}', '${session.sessionId}', '${slot.startUTC}', '${slot.endUTC}', '${slot.bookedBy || ''}', '${slot.studentName || ''}', '${slot.bookedByTeacher || false}')"
+                                            onclick="dashboard.handleSlotClick(this, '${slot.isBooked}', '${session.sessionId}', '${slot.startUTC}', '${slot.endUTC}', '${typeof slot.bookedBy === 'object' ? slot.bookedBy._id || slot.bookedBy.id : slot.bookedBy || ''}', '${slot.studentName || ''}', '${slot.bookedByTeacher || false}')"
                                         >
                                             ${slot.startTime} - ${slot.endTime}
                                             ${slot.isBooked && !isPersonal
@@ -3737,10 +4452,10 @@ class TeacherDashboard {
         const slotTimeElement = document.getElementById('cancelSlotTime');
 
         // Use provided student name first, then fallback to lookup
-        let studentName = providedStudentName || 'Unknown Student';
+        let studentName = providedStudentName;
 
         // If no student name provided, try to find it in current students
-        if (!providedStudentName && studentId) {
+        if (!studentName && studentId) {
             // Try multiple matching approaches for robustness
             const student = this.currentStudents.find(s =>
                 s._id === studentId ||
@@ -3764,6 +4479,11 @@ class TeacherDashboard {
                     console.error('Failed to fetch student data:', err);
                 });
             }
+        }
+
+        // Final fallback if still no student name
+        if (!studentName) {
+            studentName = 'Unknown Student';
         }
 
         // Format slot time
@@ -4150,59 +4870,82 @@ class TeacherDashboard {
             quizId: quizId
         };
 
+        // If Editing, Skip Preview and Submit Directly
+        if (isEdit) {
+            this.confirmCreateQuiz();
+            return;
+        }
+
         // Populate Summary
-        const title = formData.title || formData.get('title');
-        const subject = formData.subject || formData.get('subject');
+        const title = formData.title || '';
+        const subject = formData.subject || '';
+        const className = formData.class || '';
+        const duration = formData.duration || 30;
+        const totalMarks = formData.totalMarks || formData.questions.length || 0;
+
+        // Format Dates
+        let startTime = 'Not Set';
+        let endTime = 'Not Set';
+
+        if (formData.startTime) {
+            startTime = moment(formData.startTime).format('MMM D, YYYY h:mm A');
+        }
+        if (formData.endTime) {
+            endTime = moment(formData.endTime).format('MMM D, YYYY h:mm A');
+        }
 
         document.getElementById('previewTitle').textContent = title;
         document.getElementById('previewSubject').textContent = subject;
-        document.getElementById('previewClass').textContent = formData.class || formData.get('class');
-        document.getElementById('previewDuration').textContent = (formData.duration || formData.get('duration')) + ' minutes';
+        document.getElementById('previewClass').textContent = className;
+        document.getElementById('previewTotalMarks').textContent = totalMarks;
+        document.getElementById('previewDuration').textContent = parseInt(duration) + ' mins';
+        document.getElementById('previewStartTime').textContent = startTime;
+        document.getElementById('previewEndTime').textContent = endTime;
 
-        // Count questions from object or form data
-        let questions = formData.questions;
-        if (!questions) {
-            // Fallback if passing FormData directly (though createQuiz now passes object)
-            questions = [];
-            let qIndex = 0;
-            while (formData.has(`questions[${qIndex}][question]`)) {
-                questions.push({
-                    question: formData.get(`questions[${qIndex}][question]`),
-                    options: [
-                        formData.get(`questions[${qIndex}][options][0]`),
-                        formData.get(`questions[${qIndex}][options][1]`),
-                        formData.get(`questions[${qIndex}][options][2]`),
-                        formData.get(`questions[${qIndex}][options][3]`)
-                    ],
-                    correct: formData.get(`questions[${qIndex}][correctOption]`)
-                });
-                qIndex++;
-            }
-        }
-
+        // Populate Questions
+        const questions = formData.questions || [];
         document.getElementById('previewTotalQuestions').textContent = questions.length;
+        document.getElementById('previewQuestionCountBadge').textContent = questions.length;
 
-        // Populate Table
-        const tbody = document.getElementById('quizPreviewTableBody');
-        tbody.innerHTML = questions.map((q, index) => {
-            const optionsList = `
-                <ul class="options-list-preview">
-                    <li><strong>A:</strong> ${q.options[0]}</li>
-                    <li><strong>B:</strong> ${q.options[1]}</li>
-                    <li><strong>C:</strong> ${q.options[2]}</li>
-                    <li><strong>D:</strong> ${q.options[3]}</li>
-                </ul>
-            `;
+        const questionsListContainer = document.getElementById('quizPreviewQuestionsList');
+        if (questionsListContainer) {
+            questionsListContainer.innerHTML = '';
 
-            return `
-                <tr>
-                    <td><strong>${index + 1}</strong></td>
-                    <td>${q.question}</td>
-                    <td>${optionsList}</td>
-                    <td style="text-align: center;"><span class="correct-badge">${q.correctOption || q.correct}</span></td>
-                </tr>
-            `;
-        }).join('');
+            questions.forEach((q, index) => {
+                const questionCard = document.createElement('div');
+                questionCard.className = 'question-preview-card';
+
+                // Identify correct option
+                const correctOptionKey = (q.correctOption || q.correct || '').toLowerCase(); // 'a', 'b', 'c', 'd'
+
+                const optionsHtml = q.options.map((opt, i) => {
+                    const keys = ['a', 'b', 'c', 'd'];
+                    const currentKey = keys[i];
+                    const isCorrect = currentKey === correctOptionKey;
+
+                    return `
+                        <div class="option-preview-item ${isCorrect ? 'correct' : ''}">
+                            <span class="opt-label">${currentKey.toUpperCase()}</span>
+                            <span class="opt-text">${opt}</span>
+                            ${isCorrect ? '<i class="fas fa-check-circle" style="color: #15803d; margin-left: auto;"></i>' : ''}
+                        </div>
+                    `;
+                }).join('');
+
+
+                questionCard.innerHTML = `
+                    <div class="question-text">
+                        <span class="q-num-circle">${index + 1}</span>
+                        <span>${q.question}</span>
+                    </div>
+                    <div class="options-preview-grid">
+                        ${optionsHtml}
+                    </div>
+                `;
+
+                questionsListContainer.appendChild(questionCard);
+            });
+        }
 
         this.showModal('quizPreviewModal');
     }
@@ -4219,7 +4962,32 @@ class TeacherDashboard {
             const response = await this.apiCall(url, method, formData);
 
             if (response.success || response.quiz) {
-                this.showMessage(isEdit ? 'Quiz updated successfully' : 'Quiz created successfully', 'success');
+                // Check if this was a draft being published (check if we came from drafts page)
+                const draftsPage = document.getElementById('drafts-page');
+                const wasFromDrafts = draftsPage && draftsPage.classList.contains('active');
+
+                if (wasFromDrafts && isEdit) {
+                    // This was a draft being published
+                    this.showMessage('Quiz published successfully', 'success');
+
+                    // Remove from drafts list
+                    this.removeDraftFromList(quizId);
+
+                    // Add to quizzes list
+                    if (response.quiz) {
+                        this.addQuizToList(response.quiz);
+                    }
+
+                    // Update counts
+                    this.updateQuizCounts();
+
+                    // Switch back to quiz management page
+                    document.getElementById('drafts-page').classList.remove('active');
+                    document.getElementById('quiz-page').classList.add('active');
+                } else {
+                    this.showMessage(isEdit ? 'Quiz updated successfully' : 'Quiz created successfully', 'success');
+                }
+
                 this.hideModal('quizPreviewModal');
 
                 // Show main card and header
@@ -4232,7 +5000,10 @@ class TeacherDashboard {
                 document.getElementById('quizFormHeader').style.display = 'none';
                 document.getElementById('quizCreationForm').style.display = 'none';
 
-                await this.loadQuizzes();
+                // Only reload quizzes if this wasn't a draft publish (since we already updated UI)
+                if (!wasFromDrafts) {
+                    await this.loadQuizzes();
+                }
             } else {
                 this.showMessage(response.message || (isEdit ? 'Failed to update quiz' : 'Failed to create quiz'), 'error');
             }
@@ -4244,10 +5015,727 @@ class TeacherDashboard {
             this.pendingQuizData = null;
         }
     }
+
+    // Draft functionality methods
+    getQuizFormData() {
+        const form = document.getElementById('createQuizForm');
+        if (!form) return null;
+
+        const formData = new FormData(form);
+
+        // Collect questions properly
+        const questions = [];
+        const questionElements = form.querySelectorAll('.question-item');
+
+        questionElements.forEach((questionEl, index) => {
+            const questionInput = questionEl.querySelector(`input[name="questions[]"]`);
+            const questionText = questionInput ? questionInput.value : '';
+
+            // Get options for this question
+            const optionInputs = questionEl.querySelectorAll(`input[name="options${index + 1}[]"]`);
+            const options = [];
+
+            optionInputs.forEach(input => {
+                options.push(input ? input.value : '');
+            });
+
+            // Get correct answer
+            const answerSelect = questionEl.querySelector(`select[name="answers[]"]`);
+            const correctOption = answerSelect ? answerSelect.value : '0';
+
+            if (questionText.trim()) {
+                questions.push({
+                    question: questionText,
+                    options: options,
+                    correctOption: ['a', 'b', 'c', 'd'][parseInt(correctOption)] || 'a'
+                });
+            }
+        });
+
+        const startTimeStr = formData.get('startTime');
+        const endTimeStr = formData.get('endTime');
+
+        if (startTimeStr && endTimeStr) {
+            const start = new Date(startTimeStr);
+            const end = new Date(endTimeStr);
+
+            if (end <= start) {
+                this.showMessage('End Time must be later than Start Time', 'error');
+                return null;
+            }
+        }
+
+        return {
+            title: formData.get('title'),
+            description: '',
+            subject: formData.get('subject') || 'General Knowledge',
+            class: formData.get('class') || '',
+            totalMarks: questions.length || 0,
+            startTime: startTimeStr || '',
+            endTime: endTimeStr || '',
+            duration: parseInt(formData.get('duration')) || 30,
+            questions: questions
+        };
+    }
+
+    async saveDraft() {
+        try {
+            const formData = this.getQuizFormData();
+            if (!formData) {
+                return; // Error already shown in getQuizFormData
+            }
+
+            const quizId = document.getElementById('quizId').value;
+            const isEdit = !!quizId;
+
+            // Add status as draft for unified API
+            const quizData = {
+                ...formData,
+                status: 'draft'
+            };
+
+            // Determine if we're updating an existing quiz or creating a new one
+            const url = isEdit
+                ? `${this.apiBaseUrl}/quizzes/${quizId}`  // Update existing quiz
+                : `${this.apiBaseUrl}/quizzes`;            // Create new quiz
+
+            const method = isEdit ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify(quizData)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const message = isEdit
+                    ? 'Quiz updated to draft successfully!'
+                    : 'Draft saved successfully!';
+
+                this.showMessage(message, 'success');
+
+                // Always redirect to Quiz Main Page after Save to Draft
+                // This applies to both new quizzes and edited quizzes
+                this.backToQuizList();
+
+                // Refresh quizzes to show the updated list
+                await this.loadQuizzes();
+            } else {
+                this.showMessage(result.message || 'Failed to save draft', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving draft:', error);
+            this.showMessage('Error saving draft', 'error');
+        }
+    }
+
+    updateQuizUIForDraftStatus() {
+        // Update the status badge in the form header
+        const statusBadge = document.querySelector('#quizFormHeader .status-badge');
+        if (statusBadge) {
+            statusBadge.textContent = 'Draft';
+            statusBadge.className = 'status-badge draft';
+        }
+
+        // Update the status in the quiz card in the list
+        const quizId = document.getElementById('quizId').value;
+        const quizCard = document.querySelector(`.quiz-card[data-quiz-id="${quizId}"]`);
+        if (quizCard) {
+            const cardStatusBadge = quizCard.querySelector('.status-badge');
+            if (cardStatusBadge) {
+                cardStatusBadge.textContent = 'Draft';
+                cardStatusBadge.className = 'status-badge draft';
+            }
+        }
+
+        // Update the header and buttons to reflect draft status
+        const headerText = document.querySelector('#quizFormHeader h2');
+        const submitBtn = document.querySelector('#createUpdateQuizBtn');
+        const saveDraftBtn = document.getElementById('saveDraftBtn');
+        const publishBtn = document.getElementById('publishQuizBtn');
+
+        if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
+        if (saveDraftBtn) saveDraftBtn.style.display = 'none';
+        if (publishBtn) publishBtn.style.display = 'inline-block';
+
+        // Show success message
+        this.showMessage('Quiz saved as draft', 'success');
+    }
+
+    async showDraftsPage() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/quizzes/drafts`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.renderDrafts(result.data);
+                // Hide quiz page and show drafts page
+                document.getElementById('quiz-page').classList.remove('active');
+                document.getElementById('drafts-page').classList.add('active');
+            } else {
+                this.showMessage(result.message || 'Failed to load drafts', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading drafts:', error);
+            this.showMessage('Error loading drafts', 'error');
+        }
+    }
+
+    renderDrafts(drafts) {
+        const draftsList = document.getElementById('draftsList');
+        const draftCount = document.getElementById('draftCountSubtitle');
+
+        if (!drafts || drafts.length === 0) {
+            draftsList.innerHTML = '<p class="empty">No drafts saved yet</p>';
+            draftCount.textContent = '0 drafts';
+            return;
+        }
+
+        draftCount.textContent = `${drafts.length} draft${drafts.length > 1 ? 's' : ''}`;
+
+        draftsList.innerHTML = drafts.map(draft => {
+            const questionCount = draft.questions ? draft.questions.length : 0;
+            const createdDate = new Date(draft.createdAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+
+            return `
+                <div class="draft-card-simple" data-draft-id="${draft._id}">
+                    <div class="draft-header">
+                        <div class="draft-icon-section">
+                            <div class="draft-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="draft-title-info">
+                                <h3 class="draft-title">${draft.title || 'Untitled Quiz'}</h3>
+                                <p class="draft-subtitle">${draft.class || 'No class'} • ${draft.subject || 'No subject'}</p>
+                            </div>
+                        </div>
+                        <div class="draft-actions">
+                            <button class="draft-btn-publish" onclick="dashboard.publishDraft('${draft._id}')" title="Publish Quiz">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="draft-btn-edit" onclick="dashboard.editDraft('${draft._id}')" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="draft-btn-delete" onclick="dashboard.deleteDraft('${draft._id}')" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="draft-info-section">
+                        <div class="draft-info-card">
+                            <div class="draft-info-icon">
+                                <i class="fas fa-list"></i>
+                            </div>
+                            <div class="draft-info-text">
+                                <p class="draft-info-value">${questionCount}</p>
+                                <p class="draft-info-label">QUESTIONS</p>
+                            </div>
+                        </div>
+                        <div class="draft-info-card">
+                            <div class="draft-info-icon">
+                                <i class="fas fa-calendar"></i>
+                            </div>
+                            <div class="draft-info-text">
+                                <p class="draft-info-value">${createdDate}</p>
+                                <p class="draft-info-label">CREATED</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="draft-status-section">
+                        <button class="draft-btn-status draft">DRAFT</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async editDraft(draftId) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/quizzes/${draftId}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const draft = result.data;
+                this.populateQuizForm(draft);
+
+                // Switch to quiz creation form
+                document.getElementById('drafts-page').classList.remove('active');
+                document.getElementById('quiz-page').classList.add('active');
+
+                // Show form
+                const quizMainCard = document.querySelector('.quiz-main-card');
+                const quizMainHeader = document.getElementById('quizMainPageHeader');
+
+                if (quizMainCard) quizMainCard.style.display = 'none';
+                if (quizMainHeader) quizMainHeader.style.display = 'none';
+
+                document.getElementById('quizFormHeader').style.display = 'flex';
+                document.getElementById('quizCreationForm').style.display = 'block';
+
+                // Update header and button text for editing draft
+                const headerText = document.querySelector('#quizFormHeader h2');
+                if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Draft';
+
+                const submitBtn = document.querySelector('#createQuizForm button[type="submit"]');
+                if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Publish Quiz';
+
+                // Set minimum date for inputs
+                this.setMinDateForQuizInputs();
+            } else {
+                this.showMessage(result.message || 'Failed to load draft', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading draft:', error);
+            this.showMessage('Error loading draft', 'error');
+        }
+    }
+
+    async publishDraft(draftId) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/quizzes/${draftId}/publish`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Show success toast message
+                this.showMessage('Quiz published successfully', 'success');
+
+                // Remove the draft from the drafts list in real-time
+                this.removeDraftFromList(draftId);
+
+                // Add the published quiz to the manage quiz list in real-time
+                if (result.quiz) {
+                    this.addQuizToList(result.quiz);
+                }
+
+                // Update quiz counts
+                this.updateQuizCounts();
+
+                // Automatically redirect to Quiz Management page
+                document.getElementById('drafts-page').classList.remove('active');
+                document.getElementById('quiz-page').classList.add('active');
+
+                // Refresh drafts list to update count (in background)
+                this.showDraftsPage();
+            } else {
+                this.showMessage(result.message || 'Failed to publish draft', 'error');
+            }
+        } catch (error) {
+            console.error('Error publishing draft:', error);
+            this.showMessage('Error publishing draft', 'error');
+        }
+    }
+
+    removeDraftFromList(draftId) {
+        const draftElement = document.querySelector(`[data-draft-id="${draftId}"]`);
+        if (draftElement) {
+            draftElement.remove();
+        }
+    }
+
+    addQuizToList(quiz) {
+        const quizList = document.getElementById('quizList');
+        if (!quizList) return;
+
+        // Format Dates
+        const createdDate = new Date(quiz.createdAt);
+        const formattedCreatedDate = createdDate.toLocaleDateString('en-US');
+
+        const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+        const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+        // Format Schedule Dates
+        const scheduleOptions = { month: 'short', day: 'numeric' };
+        const timeOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+
+        const formatSchedule = (date) => {
+            if (!date) return 'Not set';
+            const datePart = date.toLocaleDateString('en-US', scheduleOptions);
+            const timePart = date.toLocaleTimeString('en-US', timeOptions);
+            return `${datePart}, ${timePart}`;
+        };
+
+        const formattedStart = formatSchedule(startTime);
+        const formattedEnd = formatSchedule(endTime);
+        const duration = quiz.duration ? `${quiz.duration} min` : 'Not set';
+
+        const quizCard = document.createElement('div');
+        quizCard.className = 'quiz-card';
+        quizCard.setAttribute('data-quiz-item-id', quiz._id);
+        quizCard.innerHTML = `
+            <div class="quiz-card-content">
+                <div class="quiz-card-header">
+                    <div class="quiz-icon">
+                        <i class="fas fa-question"></i>
+                    </div>
+                    <div class="quiz-title-info">
+                        <h3 class="quiz-title">${quiz.title || 'FastAPI'}</h3>
+                        <p class="quiz-subject">${quiz.class || '12th'} • ${quiz.subject || 'PYTHON'}</p>
+                    </div>
+                    <div class="quiz-status published">
+                        PUBLISHED
+                    </div>
+                </div>
+                <div class="quiz-card-body">
+                    <div class="quiz-meta">
+                        <div class="quiz-meta-item">
+                            <span class="meta-label">QUESTIONS</span>
+                            <span class="meta-value">5</span>
+                        </div>
+                        <div class="quiz-meta-item">
+                            <span class="meta-label">DURATION</span>
+                            <span class="meta-value">20 min</span>
+                        </div>
+                        <div class="quiz-meta-item">
+                            <span class="meta-label">CREATED</span>
+                            <span class="meta-value">${createdDate}</span>
+                        </div>
+                    </div>
+                    <div class="quiz-dates">
+                        <div class="date-item">
+                            <span class="date-label">START</span>
+                            <span class="date-value">Feb 19, 2026 06:48 PM</span>
+                        </div>
+                        <div class="date-item">
+                            <span class="date-label">END</span>
+                            <span class="date-value">Feb 23, 2026 06:48 PM</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="quiz-card-actions">
+                    <button class="btn-action edit-quiz" data-quiz-id="${quiz._id}">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="btn-action delete-quiz" data-quiz-id="${quiz._id}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+
+        // Add the new quiz card to the beginning of the list
+        if (quizList.firstChild && quizList.firstChild.classList.contains('empty')) {
+            quizList.innerHTML = '';
+        }
+        quizList.insertBefore(quizCard, quizList.firstChild);
+    }
+
+    updateQuizCounts() {
+        // Update quiz count in the manage quiz page
+        const quizCountSubtitle = document.getElementById('quizCountSubtitle');
+        if (quizCountSubtitle) {
+            const currentQuizzes = document.querySelectorAll('#quizList .quiz-card').length;
+            quizCountSubtitle.textContent = `${currentQuizzes} active quizzes`;
+        }
+
+        // Update draft count
+        const draftCount = document.getElementById('draftCountSubtitle');
+        if (draftCount) {
+            const currentDrafts = document.querySelectorAll('#draftsList .draft-card-simple').length;
+            draftCount.textContent = `${currentDrafts} draft${currentDrafts !== 1 ? 's' : ''}`;
+        }
+    }
+
+    showDeleteDraftModal(draftId) {
+        this.currentDraftId = draftId;
+        this.showModal('deleteDraftModal');
+    }
+
+    async deleteDraft(draftId) {
+        this.showDeleteDraftModal(draftId);
+    }
+
+    async confirmDeleteDraft() {
+        if (!this.currentDraftId) return;
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/quizzes/${this.currentDraftId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showMessage('Draft deleted successfully!', 'success');
+                this.hideModal('deleteDraftModal');
+                this.showDraftsPage(); // Refresh drafts list
+                this.currentDraftId = null;
+            } else {
+                this.showMessage(result.message || 'Failed to delete draft', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting draft:', error);
+            this.showMessage('Error deleting draft', 'error');
+        }
+    }
+
+    populateQuizForm(quiz) {
+        const form = document.getElementById('createQuizForm');
+        if (!form) return;
+
+        // Set quiz ID for editing
+        document.getElementById('quizId').value = quiz._id;
+
+        // Populate basic fields
+        form.querySelector('#quizTitle').value = quiz.title || '';
+        form.querySelector('#quizClass').value = quiz.class || '';
+        form.querySelector('#quizSubject').value = quiz.subject || '';
+        form.querySelector('#quizDuration').value = quiz.duration || '';
+
+        // Handle date fields
+        if (quiz.startTime) {
+            const startTime = new Date(quiz.startTime);
+            form.querySelector('#quizStartTime').value = startTime.toISOString().slice(0, 16);
+        }
+        if (quiz.endTime) {
+            const endTime = new Date(quiz.endTime);
+            form.querySelector('#quizEndTime').value = endTime.toISOString().slice(0, 16);
+        }
+
+        // Populate questions
+        const container = document.getElementById('questionsContainer');
+        if (container && quiz.questions && quiz.questions.length > 0) {
+            container.innerHTML = '';
+            quiz.questions.forEach((question, index) => {
+                this.addQuizQuestion(question);
+            });
+        }
+    }
+
+    backToQuizList() {
+        // Hide form and show quiz list
+        const quizMainCard = document.querySelector('.quiz-main-card');
+        if (quizMainCard) quizMainCard.style.display = 'flex';
+
+        const quizMainHeader = document.getElementById('quizMainPageHeader');
+        if (quizMainHeader) quizMainHeader.style.display = 'flex';
+
+        document.getElementById('quizFormHeader').style.display = 'none';
+        document.getElementById('quizCreationForm').style.display = 'none';
+
+        // Reset form
+        const form = document.getElementById('createQuizForm');
+        if (form) {
+            form.reset();
+            document.getElementById('quizId').value = '';
+        }
+    }
+
+    async viewQuizAttempts(quizId) {
+        try {
+            this.showLoading();
+            
+            const response = await this.apiCall(`/teachers/quizzes/${quizId}/attempts`);
+            
+            if (response.success) {
+                this.showQuizAttemptsModal(response.data);
+            } else {
+                this.showMessage(response.message || 'Failed to load quiz attempts', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading quiz attempts:', error);
+            this.showMessage('Error loading quiz attempts', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    showQuizAttemptsModal(data) {
+        const modal = document.getElementById('quizAttemptsModal');
+        if (!modal) {
+            // Create modal if it doesn't exist
+            this.createQuizAttemptsModal();
+            return this.showQuizAttemptsModal(data);
+        }
+
+        const { quiz, attempts, summary, nonAttemptedStudents } = data;
+        
+        // Update quiz info
+        document.getElementById('qaQuizTitle').textContent = quiz.title;
+        document.getElementById('qaQuizSubject').textContent = quiz.subject;
+        document.getElementById('qaQuizClass').textContent = quiz.class;
+        document.getElementById('qaQuizQuestions').textContent = quiz.questions;
+        document.getElementById('qaQuizTotalMarks').textContent = quiz.totalMarks;
+
+        // Update summary
+        document.getElementById('qaTotalStudents').textContent = summary.totalStudents;
+        document.getElementById('qaAttemptedStudents').textContent = summary.attemptedStudents;
+        document.getElementById('qaNonAttemptedStudents').textContent = summary.nonAttemptedStudents;
+        document.getElementById('qaAverageScore').textContent = summary.averageScore + '%';
+
+        // Update attempts table
+        const attemptsBody = document.getElementById('qaAttemptsBody');
+        if (attempts.length === 0) {
+            attemptsBody.innerHTML = '<tr><td colspan="5" class="empty">No attempts yet</td></tr>';
+        } else {
+            attemptsBody.innerHTML = attempts.map(attempt => `
+                <tr>
+                    <td>${attempt.student.name}</td>
+                    <td>${attempt.student.email}</td>
+                    <td>${attempt.student.class || '-'}</td>
+                    <td>${attempt.obtainedMarks}/${attempt.totalMarks}</td>
+                    <td>${attempt.percentage}%</td>
+                    <td>${new Date(attempt.submissionTime).toLocaleString()}</td>
+                    <td>
+                        <button class="btn-view-details" onclick="dashboard.viewAttemptDetails('${attempt._id}')">
+                            View Details
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Update non-attempted students
+        const nonAttemptedBody = document.getElementById('qaNonAttemptedBody');
+        if (nonAttemptedStudents.length === 0) {
+            nonAttemptedBody.innerHTML = '<tr><td colspan="3" class="empty">All students have attempted</td></tr>';
+        } else {
+            nonAttemptedBody.innerHTML = nonAttemptedStudents.map(student => `
+                <tr>
+                    <td>${student.name}</td>
+                    <td>${student.email}</td>
+                    <td>${student.class || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        this.showModal('quizAttemptsModal');
+    }
+
+    createQuizAttemptsModal() {
+        const modalHtml = `
+            <div id="quizAttemptsModal" class="modal">
+                <div class="modal-content modal-large">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-chart-bar"></i> Quiz Attempts</h2>
+                        <span class="close" onclick="dashboard.hideModal('quizAttemptsModal')">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Quiz Info -->
+                        <div class="quiz-info-section">
+                            <h3 id="qaQuizTitle"></h3>
+                            <div class="quiz-details">
+                                <span><strong>Subject:</strong> <span id="qaQuizSubject"></span></span>
+                                <span><strong>Class:</strong> <span id="qaQuizClass"></span></span>
+                                <span><strong>Questions:</strong> <span id="qaQuizQuestions"></span></span>
+                                <span><strong>Total Marks:</strong> <span id="qaQuizTotalMarks"></span></span>
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <div class="attempts-summary">
+                            <div class="summary-card">
+                                <h4>Total Students</h4>
+                                <p id="qaTotalStudents">0</p>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Attempted</h4>
+                                <p id="qaAttemptedStudents">0</p>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Not Attempted</h4>
+                                <p id="qaNonAttemptedStudents">0</p>
+                            </div>
+                            <div class="summary-card">
+                                <h4>Average Score</h4>
+                                <p id="qaAverageScore">0%</p>
+                            </div>
+                        </div>
+
+                        <!-- Tabs -->
+                        <div class="tabs">
+                            <button class="tab-btn active" onclick="dashboard.switchTab('attempts')">Attempts</button>
+                            <button class="tab-btn" onclick="dashboard.switchTab('non-attempted')">Not Attempted</button>
+                        </div>
+
+                        <!-- Attempts Table -->
+                        <div id="attemptsTab" class="tab-content active">
+                            <table class="attempts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Student Name</th>
+                                        <th>Email</th>
+                                        <th>Class</th>
+                                        <th>Marks</th>
+                                        <th>Percentage</th>
+                                        <th>Submission Time</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qaAttemptsBody">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Non-Attempted Table -->
+                        <div id="non-attemptedTab" class="tab-content">
+                            <table class="attempts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Student Name</th>
+                                        <th>Email</th>
+                                        <th>Class</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qaNonAttemptedBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    switchTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        
+        // Show selected tab
+        document.getElementById(tabName + 'Tab').classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    async viewAttemptDetails(attemptId) {
+        // This can be implemented to show detailed answer breakdown
+        this.showMessage('Detailed view coming soon!', 'info');
+    }
 }
 let dashboard;
+let teacherDashboard;
 document.addEventListener('DOMContentLoaded', () => {
     dashboard = new TeacherDashboard();
+    teacherDashboard = dashboard;
 });
 
 // Quiz CSV and Preview Handlers

@@ -4,7 +4,7 @@ const teacherAuth = require("../middleware/teacherAuth");
 const uploadCsv = require("../middleware/uploadCsv");
 
 const { studentCreate, studentUpdate, studentIdParam, markCreate, markUpdate, validate, csvUploadValidation } = require("../middleware/validation/studentValidation");
-const { getStudents, getStudentById, createStudent, updateStudent, deleteStudent, getStudentMarks, addMark, updateMark, deleteMark, updateMyProfile, uploadStudentsCSV, getTeacherStats, getQuizSampleCSV, parseQuizCSV } = require("../controllers/teacherController");
+const { getStudents, getStudentById, createStudent, updateStudent, deleteStudent, getStudentMarks, addMark, updateMark, deleteMark, updateMyProfile, uploadStudentsCSV, getTeacherStats, getQuizSampleCSV, parseQuizCSV, getQuizAttempts } = require("../controllers/teacherController");
 const { quizCsvValidation } = require("../middleware/validation/quizValidation");
 
 const router = express.Router();
@@ -23,6 +23,9 @@ router.post("/students/upload-csv", uploadCsv.single("csv"), csvUploadValidation
 // Quiz CSV Routes
 router.get("/quizzes/sample-csv", getQuizSampleCSV);
 router.post("/quizzes/parse-csv", uploadCsv.single("csv"), quizCsvValidation, parseQuizCSV);
+
+// Quiz Attempts Route
+router.get("/quizzes/:quizId/attempts", getQuizAttempts);
 
 router.get("/students/:userId/marks", studentIdParam, validate, getStudentMarks);
 router.post("/students/:userId/marks", markCreate, validate, addMark);

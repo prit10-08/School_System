@@ -1,44 +1,53 @@
 const Quiz = require("../models/Quiz");
 const User = require("../models/User");
+
 exports.createQuiz = async (req, res) => {
   try {
+    const { 
+      title, 
+      subject, 
+      class: studentClass, 
+      questions = [], 
+      startTime, 
+      endTime, 
+      duration, 
+      status = 'draft' 
+    } = req.body;
 
+    // If status is 'published', validate required fields
+    if (status === 'published') {
+      if (!questions || questions.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Published quizzes must have at least one question"
+        });
+      }
 
-    const { title, subject, class: studentClass, questions, startTime, endTime, duration } = req.body;
-
-    if (!questions || questions.length === 0) {
-      console.log('Validation failed: No questions');
-      return res.status(400).json({
-        success: false,
-        message: "Questions are required"
-      });
+      if (!studentClass) {
+        return res.status(400).json({
+          success: false,
+          message: "Class is required for published quizzes"
+        });
+      }
     }
-
-    if (!studentClass) {
-      return res.status(400).json({
-        success: false,
-        message: "Class is required"
-      });
-    }
-
 
     const quiz = await Quiz.create({
-      title,
-      subject,
-      class: studentClass,
+      title: status === 'draft' ? (title || "Untitled Quiz") : title,
+      subject: status === 'draft' ? (subject || "") : subject,
+      class: status === 'draft' ? (studentClass || "") : studentClass,
       questions,
       totalMarks: questions.length,
       itemOffset: 0,
       startTime: startTime || null,
       endTime: endTime || null,
       duration: duration || null,
-      teacherId: req.user.id
+      teacherId: req.user.id,
+      status
     });
-
 
     res.status(201).json({
       success: true,
-      message: "Quiz created successfully",
+      message: `Quiz ${status === 'draft' ? 'draft' : ''} created successfully`,
       quiz
     });
   } catch (err) {
@@ -53,9 +62,16 @@ exports.createQuiz = async (req, res) => {
 
 exports.getMyQuizzes = async (req, res) => {
   try {
-    const quizzes = await Quiz.find({
-      teacherId: req.user.id
-    }).select("-__v");
+    const { status } = req.query;
+    const query = { teacherId: req.user.id };
+    
+    if (status) {
+      query.status = status;
+    }
+
+    const quizzes = await Quiz.find(query)
+      .select("-__v")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -109,16 +125,44 @@ exports.updateQuiz = async (req, res) => {
       });
     }
 
-    const { title, subject, class: studentClass, questions, startTime, endTime, duration } = req.body;
+    const { 
+      title, 
+      subject, 
+      class: studentClass, 
+      questions, 
+      startTime, 
+      endTime, 
+      duration,
+      status
+    } = req.body;
 
-    if (title) quiz.title = title;
-    if (subject) quiz.subject = subject;
-    if (studentClass) quiz.class = studentClass;
-    if (startTime) quiz.startTime = startTime;
-    if (endTime) quiz.endTime = endTime;
-    if (duration) quiz.duration = duration;
+    // If updating to published, validate required fields
+    if (status === 'published' || (status === undefined && quiz.status === 'draft' && !req.body.status)) {
+      if ((questions || quiz.questions).length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Published quizzes must have at least one question"
+        });
+      }
 
-    if (questions) {
+      if (!studentClass && !quiz.class) {
+        return res.status(400).json({
+          success: false,
+          message: "Class is required for published quizzes"
+        });
+      }
+    }
+
+    // Update fields if provided
+    if (title !== undefined) quiz.title = title;
+    if (subject !== undefined) quiz.subject = subject;
+    if (studentClass !== undefined) quiz.class = studentClass;
+    if (startTime !== undefined) quiz.startTime = startTime;
+    if (endTime !== undefined) quiz.endTime = endTime;
+    if (duration !== undefined) quiz.duration = duration;
+    if (status) quiz.status = status;
+
+    if (questions !== undefined) {
       quiz.questions = questions;
       quiz.totalMarks = questions.length;
     }
@@ -127,7 +171,7 @@ exports.updateQuiz = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Quiz updated successfully",
+      message: `Quiz ${quiz.status === 'draft' ? 'draft ' : ''}updated successfully`,
       quiz
     });
   } catch (err) {
@@ -204,8 +248,7 @@ exports.deleteQuiz = async (req, res) => {
 
 exports.getAvailableQuizzes = async (req, res) => {
   try {
-    // ✅ logged in student fetch
-    const student = await User.findById(req.user.id).select("teacherId");
+    const student = await User.findById(req.user.id).select("teacherId class");
 
     if (!student) {
       return res.status(404).json({
@@ -221,8 +264,11 @@ exports.getAvailableQuizzes = async (req, res) => {
       });
     }
 
-    // ✅ Only quizzes created by student's teacher
-    const quizzes = await Quiz.find({ teacherId: student.teacherId })
+    const quizzes = await Quiz.find({
+      teacherId: student.teacherId,
+      class: student.class,
+      status: { $ne: "draft" }  
+    })
       .select("-__v -questions.correctOption")
       .sort({ createdAt: -1 });
 
@@ -234,7 +280,6 @@ exports.getAvailableQuizzes = async (req, res) => {
       duration: quiz.duration || 30,
       questionCount: quiz.questions ? quiz.questions.length : 0,
 
-      // ✅ fix operator precedence issue
       totalMarks: quiz.totalMarks || (quiz.questions ? quiz.questions.length : 0),
 
       createdAt: quiz.createdAt
