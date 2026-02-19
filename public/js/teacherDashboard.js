@@ -4,6 +4,7 @@ class TeacherDashboard {
         this.token = localStorage.getItem('token');
         this.teacher = null;
         this.currentStudents = [];
+        this.quizExpiryInterval = null;
         this.init();
     }
 
@@ -244,7 +245,23 @@ class TeacherDashboard {
 
         document.getElementById('closeCsvModal')?.addEventListener('click', () => {
             this.hideModal('uploadCsvModal');
+            // Clear error message when modal is closed
+            const errorElement = document.getElementById('csvFileError');
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
         });
+
+        // Clear error message when file is selected
+        const csvFileInput = document.querySelector('input[name="csv"]');
+        if (csvFileInput) {
+            csvFileInput.addEventListener('change', () => {
+                const errorElement = document.getElementById('csvFileError');
+                if (errorElement) {
+                    errorElement.textContent = '';
+                }
+            });
+        }
 
         // Create Quiz Form Toggle
         document.getElementById('createQuizBtn')?.addEventListener('click', () => {
@@ -270,6 +287,12 @@ class TeacherDashboard {
                     container.innerHTML = '';
                     this.addQuizQuestion();
                 }
+
+                // Ensure bottom action buttons are visible for new creations
+                const saveDraftBtn = document.getElementById('saveDraftBtn');
+                const publishBtn = document.getElementById('publishQuizBtn');
+                if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+                if (publishBtn) publishBtn.style.display = 'inline-block';
             }
 
             const quizMainCard = document.querySelector('.quiz-main-card');
@@ -293,6 +316,11 @@ class TeacherDashboard {
         // Save to Draft button
         document.getElementById('saveDraftBtn')?.addEventListener('click', () => {
             this.saveDraft();
+        });
+        // Update button (used when editing published or draft; preserves original status)
+        document.getElementById('updateDraftBtn')?.addEventListener('click', () => {
+            const form = document.getElementById('createQuizForm');
+            if (form) this.createQuiz(form);
         });
 
         // Back to Quiz List button
@@ -384,7 +412,25 @@ class TeacherDashboard {
 
         // Publish Quiz button
         document.getElementById('publishQuizBtn')?.addEventListener('click', () => {
-            this.showQuizPreviewBeforePublish();
+            const form = document.getElementById('createQuizForm');
+            if (!form) return;
+            
+            // First validate the form
+            if (!this.validateQuizForm(form)) {
+                // Validation failed - errors are shown inline
+                return;
+            }
+            
+            // Validation passed - show preview
+            const quizId = document.getElementById('quizId')?.value;
+            if (quizId) {
+                this.showQuizPreviewBeforePublish();
+            } else {
+                const formData = this.getQuizFormData('published');
+                if (!formData) return;
+                // For new quizzes, use publish mode, not create mode
+                this.renderQuizPreview(formData, 'publish', null);
+            }
         });
 
         document.getElementById('closePublishQuizModal')?.addEventListener('click', () => {
@@ -462,193 +508,121 @@ class TeacherDashboard {
         try {
             this.showLoading();
 
-            // Get current quiz data
+            // Get current form values for start/end times
+            const formStartTime = document.getElementById('quizStartTime').value;
+            const formEndTime = document.getElementById('quizEndTime').value;
+            const formDuration = document.getElementById('quizDuration').value;
+            const formTitle = document.getElementById('quizTitle').value;
+            const formSubject = document.getElementById('quizSubject').value;
+            const formClass = document.getElementById('quizClass').value;
+
+            // Get current quiz data from database for questions and other fields
             const response = await this.apiCall(`/quizzes/${quizId}`, 'GET');
             
             if (response.success && response.data) {
                 const quiz = response.data;
                 
-                // Prepare quiz data for preview
+                // Prepare quiz data for preview - use form values for times, database for questions
                 const quizData = {
-                    title: quiz.title,
-                    subject: quiz.subject,
-                    class: quiz.class,
+                    title: formTitle || quiz.title,
+                    subject: formSubject || quiz.subject,
+                    class: formClass || quiz.class,
                     questions: quiz.questions,
-                    startTime: quiz.startTime,
-                    endTime: quiz.endTime,
-                    duration: quiz.duration,
+                    startTime: formStartTime ? new Date(formStartTime) : quiz.startTime,
+                    endTime: formEndTime ? new Date(formEndTime) : quiz.endTime,
+                    duration: formDuration || quiz.duration,
                     totalMarks: quiz.totalMarks
                 };
 
                 // Show preview modal with publish-specific buttons
-                this.showQuizPreviewModalForPublish(quizData, quizId);
+                this.showQuizConfirmationDialog(quizData, quizId);
             } else {
                 this.showMessage('Failed to load quiz data', 'error');
             }
-        } catch (error) {
-            console.error('Error loading quiz for preview:', error);
-            this.showMessage('Error loading quiz data', 'error');
-        } finally {
-            this.hideLoading();
-        }
+    } catch (error) {
+        console.error('Error loading quiz for preview:', error);
+        this.showMessage('Error loading quiz data', 'error');
+    } finally {
+        this.hideLoading();
+    }
+}
+
+// Show Quiz Confirmation Dialog specifically for publishing draft quizzes
+showQuizConfirmationDialog(quizData, quizId) {
+    this.renderQuizPreview(quizData, 'publish', quizId);
+}
+
+// Helper function to escape HTML
+escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Confirm publish after preview
+async confirmPublishFromPreview() {
+    if (!this.currentQuizData) {
+        this.showMessage('No quiz data available', 'error');
+        return;
     }
 
-    // Show Quiz Preview Modal specifically for publishing draft quizzes
-    showQuizPreviewModalForPublish(quizData, quizId) {
-        // Store quiz data for publishing
-        this.pendingPublishQuizData = {
-            quizData: quizData,
-            quizId: quizId
-        };
+    const { quizData, quizId } = this.currentQuizData;
 
-        // Populate preview modal with quiz data
-        const title = quizData.title || 'Untitled Quiz';
-        const subject = quizData.subject || 'No Subject';
-        const className = quizData.class || 'No Class';
-        const duration = quizData.duration || 'Not Set';
-        const totalMarks = quizData.totalMarks || quizData.questions?.length || 0;
-        
-        let startTime = 'Not Set';
-        let endTime = 'Not Set';
-        
-        if (quizData.startTime) {
-            startTime = moment(quizData.startTime).format('MMM D, YYYY h:mm A');
-        }
-        if (quizData.endTime) {
-            endTime = moment(quizData.endTime).format('MMM D, YYYY h:mm A');
-        }
+    try {
+        this.showLoading();
+        this.hideModal('quizPreviewModal');
 
-        // Update preview modal content
-        document.getElementById('previewTitle').textContent = title;
-        document.getElementById('previewSubject').textContent = subject;
-        document.getElementById('previewClass').textContent = className;
-        document.getElementById('previewTotalMarks').textContent = totalMarks;
-        document.getElementById('previewDuration').textContent = parseInt(duration) + ' mins';
-        document.getElementById('previewStartTime').textContent = startTime;
-        document.getElementById('previewEndTime').textContent = endTime;
-
-        // Populate Questions
-        const questions = quizData.questions || [];
-        document.getElementById('previewTotalQuestions').textContent = questions.length;
-
-        const questionsListContainer = document.getElementById('quizPreviewQuestionsList');
-        if (questionsListContainer) {
-            questionsListContainer.innerHTML = '';
-
-            questions.forEach((q, index) => {
-                const questionCard = document.createElement('div');
-                questionCard.className = 'question-preview-card';
-
-                // Identify correct option
-                const correctOptionKey = (q.correctOption || q.correct || '').toLowerCase(); // 'a', 'b', 'c', 'd'
-
-                // Generate options HTML
-                const optionsHtml = q.options.map((opt, i) => {
-                    const currentKey = String.fromCharCode(97 + i); // 'a', 'b', 'c', 'd'
-                    const isCorrect = currentKey === correctOptionKey;
-
-                    return `
-                        <div class="option-preview-item ${isCorrect ? 'correct' : ''}">
-                            <span class="opt-label">${currentKey.toUpperCase()}</span>
-                            <span class="opt-text">${opt}</span>
-                            ${isCorrect ? '<i class="fas fa-check-circle" style="color: #15803d; margin-left: auto;"></i>' : ''}
-                        </div>
-                    `;
-                }).join('');
-
-                questionCard.innerHTML = `
-                    <div class="question-preview-header">
-                        <span class="q-num-circle">${index + 1}</span>
-                        <span>${q.question}</span>
-                    </div>
-                    <div class="options-preview-grid">
-                        ${optionsHtml}
-                    </div>
-                `;
-
-                questionsListContainer.appendChild(questionCard);
-            });
-        }
-
-        // Update modal buttons for publish flow
-        const modalFooter = document.querySelector('#quizPreviewModal .modal-footer');
-        if (modalFooter) {
-            modalFooter.innerHTML = `
-                <button class="btn btn-outline" id="backToEditFromPreview">
-                    <i class="fas fa-edit"></i> Back to Edit
-                </button>
-                <button class="btn btn-primary" id="confirmPublishFromPreview">
-                    <i class="fas fa-rocket"></i> Confirm Publish
-                </button>
-            `;
-        }
-
-        // Add event listeners for the new buttons
-        document.getElementById('backToEditFromPreview')?.addEventListener('click', () => {
-            this.hideModal('quizPreviewModal');
-        });
-
-        document.getElementById('confirmPublishFromPreview')?.addEventListener('click', () => {
-            this.confirmPublishFromPreview();
-        });
-
-        // Show the modal
-        this.showModal('quizPreviewModal');
-    }
-
-    // Confirm publish after preview
-    async confirmPublishFromPreview() {
-        if (!this.pendingPublishQuizData) {
-            this.showMessage('No quiz data available', 'error');
-            return;
-        }
-
-        const { quizId } = this.pendingPublishQuizData;
-
-        try {
-            this.showLoading();
-            this.hideModal('quizPreviewModal');
-
-            const response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', {
+        let response;
+        if (quizId) {
+            // Publishing existing draft quiz - update all fields including status
+            response = await this.apiCall(`/quizzes/${quizId}`, 'PUT', {
+                ...quizData,
                 status: 'published'
             });
-
-            if (response.success) {
-                this.showMessage('Quiz published successfully.', 'success');
-
-                // Refresh quizzes and return to list
-                await this.refreshQuizzes();
-
-                // Hide form and show list
-                const quizMainCard = document.querySelector('.quiz-main-card');
-                if (quizMainCard) quizMainCard.style.display = 'flex';
-
-                const quizMainHeader = document.getElementById('quizMainPageHeader');
-                if (quizMainHeader) quizMainHeader.style.display = 'flex';
-
-                document.getElementById('quizFormHeader').style.display = 'none';
-                document.getElementById('quizCreationForm').style.display = 'none';
-
-                // Reset form
-                const form = document.getElementById('createQuizForm');
-                if (form) {
-                    form.reset();
-                    document.getElementById('quizId').value = '';
-                }
-
-                // Clear pending data
-                this.pendingPublishQuizData = null;
-
-            } else {
-                this.showMessage(response.message || 'Failed to publish quiz', 'error');
-            }
-        } catch (error) {
-            console.error('Error publishing quiz:', error);
-            this.showMessage('Error publishing quiz', 'error');
-        } finally {
-            this.hideLoading();
+        } else {
+            // Creating new quiz
+            response = await this.apiCall('/quizzes', 'POST', {
+                ...quizData,
+                status: 'published'
+            });
         }
+
+        if (response.success) {
+            this.showMessage(quizId ? 'Quiz published successfully.' : 'Quiz created successfully.', 'success');
+
+            // Refresh quizzes and return to list
+            await this.refreshQuizzes();
+
+            // Hide form and show list
+            const quizMainCard = document.querySelector('.quiz-main-card');
+            if (quizMainCard) quizMainCard.style.display = 'flex';
+
+            const quizMainHeader = document.getElementById('quizMainPageHeader');
+            if (quizMainHeader) quizMainHeader.style.display = 'flex';
+
+            document.getElementById('quizFormHeader').style.display = 'none';
+            document.getElementById('quizCreationForm').style.display = 'none';
+
+            // Reset form
+            const form = document.getElementById('createQuizForm');
+            if (form) {
+                form.reset();
+                document.getElementById('quizId').value = '';
+            }
+
+            // Clear current data
+            this.currentQuizData = null;
+
+        } else {
+            this.showMessage(response.message || (quizId ? 'Failed to publish quiz' : 'Failed to create quiz'), 'error');
+        }
+    } catch (error) {
+        console.error('Error publishing/creating quiz:', error);
+        this.showMessage('Error processing quiz', 'error');
+    } finally {
+        this.hideLoading();
     }
+}
 
     setupFormHandlers() {
         // Add Student Form
@@ -705,7 +679,7 @@ class TeacherDashboard {
         });
 
         form.addEventListener('change', (e) => {
-            if (e.target.tagName === 'SELECT' || e.target.type === 'datetime-local') {
+            if (e.target.tagName === 'SELECT' || e.target.type === 'datetime-local' || e.target.type === 'checkbox') {
                 this.clearFieldValidation(e.target);
             }
         });
@@ -763,6 +737,9 @@ class TeacherDashboard {
             this.loadHolidays(),
             this.loadStats()
         ]);
+        
+        // Start real-time quiz expiry monitoring
+        this.startQuizExpiryMonitoring();
     }
 
     async loadStudents() {
@@ -900,6 +877,9 @@ class TeacherDashboard {
             return;
         }
 
+        // Store quizzes for expiry monitoring
+        this.currentQuizzes = quizzes;
+
         // Show all quizzes (drafts and published) in unified list
         const allQuizzes = quizzes;
 
@@ -946,11 +926,28 @@ class TeacherDashboard {
 
             // Status
             const isDraft = quiz.status === 'draft';
-            const statusClass = isDraft ? 'draft' : 'published';
-            const statusText = isDraft ? 'DRAFT' : 'PUBLISHED';
+            const now = new Date();
+            const isExpired = !isDraft && endTime && endTime < now;
+            const isStarted = !isDraft && startTime && startTime <= now;
+            
+            let statusClass, statusText;
+            if (isDraft) {
+                statusClass = 'draft';
+                statusText = 'DRAFT';
+            } else if (isExpired) {
+                statusClass = 'expired';
+                statusText = 'EXPIRED';
+            } else {
+                statusClass = 'published';
+                statusText = 'PUBLISHED';
+            }
+
+            // Determine if edit should be disabled for published quizzes
+            const editDisabled = !isDraft && isStarted;
+            const editTitle = editDisabled ? 'Cannot edit published quiz after start time' : 'Edit Quiz';
 
             return `
-            <div class="quiz-card" data-quiz-item-id="${quiz._id}">
+            <div class="quiz-card" data-quiz-item-id="${quiz._id}" data-quiz-status="${quiz.status}" data-start-time="${quiz.startTime || ''}" data-end-time="${quiz.endTime || ''}">
                 <div class="quiz-card-header">
                     <div class="quiz-icon-section">
                         <div class="quiz-icon">
@@ -963,10 +960,10 @@ class TeacherDashboard {
                     </div>
                     <div class="quiz-actions">
                         <button class="btn-status ${statusClass}">${statusText}</button>
-                        <button class="btn-view-attempts" onclick="dashboard.viewQuizAttempts('${quiz._id}')" title="View Attempts">
+                        ${!isDraft ? `<button class="btn-view-attempts" onclick="dashboard.viewQuizAttempts('${quiz._id}')" title="View Attempts">
                             <i class="fas fa-chart-bar"></i>
-                        </button>
-                        <button class="btn-edit" onclick="dashboard.editQuiz('${quiz._id}')">
+                        </button>` : ''}
+                        <button class="btn-edit ${editDisabled ? 'disabled' : ''}" onclick="dashboard.editQuiz('${quiz._id}')" title="${editTitle}" ${editDisabled ? 'disabled' : ''}>
                             <i class="fas fa-edit"></i>
                         </button>
                         <button class="btn-delete" onclick="dashboard.deleteQuiz('${quiz._id}')">
@@ -1540,6 +1537,27 @@ class TeacherDashboard {
     }
 
     async uploadCsv(form) {
+        // Custom validation: Check if file is selected
+        const fileInput = form.querySelector('input[name="csv"]');
+        const errorElement = document.getElementById('csvFileError');
+        
+        // Clear previous error
+        errorElement.textContent = '';
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            errorElement.textContent = 'Please select a file.';
+            fileInput.focus();
+            return;
+        }
+        
+        // Check if file is CSV
+        const file = fileInput.files[0];
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            errorElement.textContent = 'Please select a valid CSV file.';
+            fileInput.focus();
+            return;
+        }
+
         const formData = new FormData(form);
         formData.append('teacherUserId', this.teacher.userId);
 
@@ -1553,13 +1571,21 @@ class TeacherDashboard {
                 if (response.total !== undefined) {
                     message += `\nTotal: ${response.total}, Inserted: ${response.inserted}, Skipped: ${response.skipped}`;
                 }
-                if (response.skippedDetails && response.skippedDetails.length > 0) {
+                
+                // If all rows were skipped, show a simple format error message
+                if (response.total > 0 && response.inserted === 0 && response.skipped === response.total) {
+                    this.showMessage('Invalid CSV format. Please check the required columns.', 'error');
+                } else if (response.skippedDetails && response.skippedDetails.length > 0 && response.inserted > 0) {
+                    // Show skipped details only if some records were successfully inserted
                     message += '\n\nSkipped rows:';
                     response.skippedDetails.forEach(detail => {
                         message += `\nRow ${detail.row} (${detail.userId}): ${detail.reasons.join(', ')}`;
                     });
+                    this.showMessage(message, 'warning');
+                } else {
+                    this.showMessage(message, response.inserted > 0 ? 'success' : 'warning');
                 }
-                this.showMessage(message, response.inserted > 0 ? 'success' : 'warning');
+                
                 this.hideModal('uploadCsvModal');
                 form.reset();
                 await this.loadStudents();
@@ -1601,9 +1627,14 @@ class TeacherDashboard {
                 options.push(input ? input.value : '');
             });
 
-            // Get correct answer
-            const answerSelect = questionEl.querySelector(`select[name="answers[]"]`);
-            const correctOption = answerSelect ? answerSelect.value : '0';
+            // Get correct answer from checkboxes
+            const answerCheckboxes = questionEl.querySelectorAll(`input[name^="answers"]`);
+            let correctOption = '0'; // default to first option
+            answerCheckboxes.forEach((checkbox) => {
+                if (checkbox.checked) {
+                    correctOption = checkbox.value;
+                }
+            });
 
             if (questionText.trim()) {
                 questions.push({
@@ -1699,7 +1730,7 @@ class TeacherDashboard {
         }
 
         // Show Preview Modal instead of direct submission
-        this.showQuizPreviewModal(quizData, isEdit, quizId);
+        this.showQuizConfirmationDialog(quizData, null);
     }
 
     async addMarks(form) {
@@ -1770,6 +1801,28 @@ class TeacherDashboard {
             msg = field.parentElement.querySelector('.validation-message');
         }
         if (msg) msg.textContent = '';
+        
+        // For checkboxes in options, also clear the answer validation message and highlighting
+        if (field.type === 'checkbox' && field.name.startsWith('answers')) {
+            // Clear validation message from first option container
+            const questionItem = field.closest('.question-item');
+            if (questionItem) {
+                const firstOptionContainer = questionItem.querySelector('.option-container');
+                if (firstOptionContainer) {
+                    const validationMsg = firstOptionContainer.querySelector('.validation-message');
+                    if (validationMsg) validationMsg.textContent = '';
+                }
+            }
+            
+            // Clear highlighting from all option containers in this question
+            const allCheckboxes = field.closest('.question-item').querySelectorAll('input[name^="answers"]');
+            allCheckboxes.forEach(checkbox => {
+                const container = checkbox.closest('.option-container');
+                if (container) {
+                    container.classList.remove('selected');
+                }
+            });
+        }
     }
 
     validateQuizForm(form) {
@@ -1847,12 +1900,22 @@ class TeacherDashboard {
                 }
             });
 
-            const answer = question.querySelector('select[name="answers[]"]');
-            if (answer && !answer.value) {
-                answer.classList.add('error');
-                const msg = answer.nextElementSibling;
-                if (msg && msg.classList.contains('validation-message')) {
-                    msg.textContent = 'Correct answer is required';
+            const answerCheckboxes = question.querySelectorAll('input[name^="answers"]');
+            let hasSelectedAnswer = false;
+            answerCheckboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    hasSelectedAnswer = true;
+                }
+            });
+            
+            if (!hasSelectedAnswer) {
+                // Show error in the first option container's validation message
+                const firstOptionContainer = question.querySelector('.option-container');
+                if (firstOptionContainer) {
+                    const msg = firstOptionContainer.querySelector('.validation-message');
+                    if (msg) {
+                        msg.textContent = 'Please select a correct answer';
+                    }
                 }
                 isValid = false;
             }
@@ -1874,44 +1937,108 @@ class TeacherDashboard {
                 </button>
             </div>
             <div class="question-content">
-                <input type="text" name="questions[]" placeholder="Question" value="${data ? data.question : ''}">
-                <span class="validation-message"></span>
-                <div class="options-grid">
-                    <div>
-                        <input type="text" name="options${questionCount}[]" placeholder="Option A" value="${data && data.options && data.options[0] ? data.options[0] : ''}">
-                        <span class="validation-message"></span>
-                    </div>
-                    <div>
-                        <input type="text" name="options${questionCount}[]" placeholder="Option B" value="${data && data.options && data.options[1] ? data.options[1] : ''}">
-                        <span class="validation-message"></span>
-                    </div>
-                    <div>
-                        <input type="text" name="options${questionCount}[]" placeholder="Option C" value="${data && data.options && data.options[2] ? data.options[2] : ''}">
-                        <span class="validation-message"></span>
-                    </div>
-                    <div>
-                        <input type="text" name="options${questionCount}[]" placeholder="Option D" value="${data && data.options && data.options[3] ? data.options[3] : ''}">
-                        <span class="validation-message"></span>
-                    </div>
-                </div>
-                <div class="answer-section">
-                    <label>Correct Answer:</label>
-                    <select name="answers[]">
-                        <option value="">Select correct answer</option>
-                        <option value="0" ${data && data.correctOption === 'a' ? 'selected' : ''}>A</option>
-                        <option value="1" ${data && data.correctOption === 'b' ? 'selected' : ''}>B</option>
-                        <option value="2" ${data && data.correctOption === 'c' ? 'selected' : ''}>C</option>
-                        <option value="3" ${data && data.correctOption === 'd' ? 'selected' : ''}>D</option>
-                    </select>
+                <!-- Question Text Field (Full Width) -->
+                <div class="question-row">
+                    <input type="text" name="questions[]" placeholder="Enter your question here..." class="question-input" value="${data ? data.question : ''}">
                     <span class="validation-message"></span>
+                </div>
+                
+                <!-- Options Row (4 Columns) -->
+                <div class="options-row">
+                    <div class="option-item">
+                        <input type="text" name="options${questionCount}[]" placeholder="Option A" class="option-input" value="${data && data.options && data.options[0] ? data.options[0] : ''}">
+                        <div class="option-checkbox-wrapper">
+                            <input type="checkbox" name="answers${questionCount}[]" id="answerA${questionCount}" value="0" class="option-checkbox" ${data && data.correctOption === 'a' ? 'checked' : ''}>
+                            <label for="answerA${questionCount}" class="checkbox-label"></label>
+                        </div>
+                        <span class="validation-message"></span>
+                    </div>
+                    <div class="option-item">
+                        <input type="text" name="options${questionCount}[]" placeholder="Option B" class="option-input" value="${data && data.options && data.options[1] ? data.options[1] : ''}">
+                        <div class="option-checkbox-wrapper">
+                            <input type="checkbox" name="answers${questionCount}[]" id="answerB${questionCount}" value="1" class="option-checkbox" ${data && data.correctOption === 'b' ? 'checked' : ''}>
+                            <label for="answerB${questionCount}" class="checkbox-label"></label>
+                        </div>
+                        <span class="validation-message"></span>
+                    </div>
+                    <div class="option-item">
+                        <input type="text" name="options${questionCount}[]" placeholder="Option C" class="option-input" value="${data && data.options && data.options[2] ? data.options[2] : ''}">
+                        <div class="option-checkbox-wrapper">
+                            <input type="checkbox" name="answers${questionCount}[]" id="answerC${questionCount}" value="2" class="option-checkbox" ${data && data.correctOption === 'c' ? 'checked' : ''}>
+                            <label for="answerC${questionCount}" class="checkbox-label"></label>
+                        </div>
+                        <span class="validation-message"></span>
+                    </div>
+                    <div class="option-item">
+                        <input type="text" name="options${questionCount}[]" placeholder="Option D" class="option-input" value="${data && data.options && data.options[3] ? data.options[3] : ''}">
+                        <div class="option-checkbox-wrapper">
+                            <input type="checkbox" name="answers${questionCount}[]" id="answerD${questionCount}" value="3" class="option-checkbox" ${data && data.correctOption === 'd' ? 'checked' : ''}>
+                            <label for="answerD${questionCount}" class="checkbox-label"></label>
+                        </div>
+                        <span class="validation-message"></span>
+                    </div>
                 </div>
             </div>
         `;
 
-        // Add event listener to the remove button
+        // Add event listener to remove button
         const removeBtn = questionItem.querySelector('.btn-remove-question');
         removeBtn.addEventListener('click', () => {
             this.removeQuestion(removeBtn);
+        });
+
+        // Add event listeners to option inputs for checkbox visibility
+        const optionInputs = questionItem.querySelectorAll('.option-input');
+        optionInputs.forEach(input => {
+            input.addEventListener('focus', () => {
+                // Hide checkbox when user starts typing
+                const wrapper = input.nextElementSibling;
+                if (wrapper && wrapper.classList.contains('option-checkbox-wrapper')) {
+                    wrapper.style.opacity = '0';
+                    wrapper.style.pointerEvents = 'none';
+                }
+            });
+            
+            input.addEventListener('blur', () => {
+                // Show checkbox when user clicks outside
+                const wrapper = input.nextElementSibling;
+                if (wrapper && wrapper.classList.contains('option-checkbox-wrapper')) {
+                    wrapper.style.opacity = '1';
+                    wrapper.style.pointerEvents = 'auto';
+                }
+            });
+        });
+
+        // Add event listeners to checkboxes to ensure only one can be selected and handle highlighting
+        const checkboxes = questionItem.querySelectorAll(`input[name="answers${questionCount}[]"]`);
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    // Uncheck all other checkboxes in this question
+                    checkboxes.forEach(otherCheckbox => {
+                        if (otherCheckbox !== checkbox) {
+                            otherCheckbox.checked = false;
+                        }
+                        // Remove highlighting from all option items
+                        const otherOptionItem = otherCheckbox.closest('.option-item');
+                        if (otherOptionItem) {
+                            otherOptionItem.classList.remove('selected');
+                        }
+                    });
+                    
+                    // Add highlighting to selected option item
+                    const selectedOptionItem = checkbox.closest('.option-item');
+                    if (selectedOptionItem) {
+                        selectedOptionItem.classList.add('selected');
+                    }
+                } else {
+                    // Remove highlighting when unchecked
+                    const optionItem = checkbox.closest('.option-item');
+                    if (optionItem) {
+                        optionItem.classList.remove('selected');
+                    }
+                }
+            });
         });
 
         container.appendChild(questionItem);
@@ -1968,6 +2095,15 @@ class TeacherDashboard {
         const targetPage = document.getElementById(`${pageName}-page`);
         if (targetPage) {
             targetPage.classList.add('active');
+        }
+
+        // Manage quiz expiry monitoring based on page
+        if (pageName === 'quiz') {
+            // Start monitoring when on quiz page
+            this.startQuizExpiryMonitoring();
+        } else {
+            // Stop monitoring when leaving quiz page
+            this.stopQuizExpiryMonitoring();
         }
 
         // Load page-specific data (only for pages that need fresh data)
@@ -2808,12 +2944,40 @@ class TeacherDashboard {
 
     async editQuiz(quizId) {
         try {
+            // First check if quiz is loaded in current data
+            const quiz = this.currentQuizzes?.find(q => q._id === quizId);
+            
+            if (quiz) {
+                // Check edit validation for published quizzes
+                const isDraft = quiz.status === 'draft';
+                const now = new Date();
+                const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+                const isStarted = !isDraft && startTime && startTime <= now;
+                
+                if (!isDraft && isStarted) {
+                    this.showMessage('Cannot edit published quiz after start time', 'error');
+                    return;
+                }
+            }
+            
             this.showLoading();
             const response = await this.apiCall(`/quizzes/${quizId}`, 'GET');
 
             if (response.success || response._id) {
-                const quiz = response.data || response;
-                this.populateAndShowQuizForm(quiz);
+                const quizData = response.data || response;
+                
+                // Double-check validation with fresh data
+                const isDraft = quizData.status === 'draft';
+                const startTime = quizData.startTime ? new Date(quizData.startTime) : null;
+                const currentTime = new Date();
+                const isStarted = !isDraft && startTime && startTime <= currentTime;
+                
+                if (!isDraft && isStarted) {
+                    this.showMessage('Cannot edit published quiz after start time', 'error');
+                    return;
+                }
+                
+                this.populateAndShowQuizForm(quizData);
             } else {
                 this.showMessage(response.message || 'Failed to load quiz', 'error');
             }
@@ -2892,23 +3056,21 @@ class TeacherDashboard {
 
         // 5. Update Header and Button Text based on quiz status
         const headerText = document.querySelector('#quizFormHeader h2');
-        const submitBtn = form.querySelector('#createUpdateQuizBtn');
         const saveDraftBtn = document.getElementById('saveDraftBtn');
+        const updateDraftBtn = document.getElementById('updateDraftBtn');
         const publishBtn = document.getElementById('publishQuizBtn');
 
         const isDraft = quiz.status === 'draft';
 
         if (isDraft) {
-            // For draft quizzes: Cancel, Update Quiz, Publish Quiz
             if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
-            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
             if (saveDraftBtn) saveDraftBtn.style.display = 'none';
+            if (updateDraftBtn) updateDraftBtn.style.display = 'inline-block';
             if (publishBtn) publishBtn.style.display = 'inline-block';
         } else {
-            // For published quizzes: Cancel, Save to Draft, Update Quiz
             if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
-            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
             if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+            if (updateDraftBtn) updateDraftBtn.style.display = 'inline-block';
             if (publishBtn) publishBtn.style.display = 'none';
         }
 
@@ -4750,6 +4912,11 @@ class TeacherDashboard {
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
                 this.hideModal('uploadQuizCsvModal');
+                // Clear error message when modal is closed
+                const errorElement = document.getElementById('quizCsvFileError');
+                if (errorElement) {
+                    errorElement.textContent = '';
+                }
             });
         }
 
@@ -4765,6 +4932,12 @@ class TeacherDashboard {
                 if (display) {
                     display.textContent = fileName ? `Selected: ${fileName}` : '';
                     display.style.display = fileName ? 'inline-block' : 'none';
+                }
+                
+                // Clear error message when file is selected
+                const errorElement = document.getElementById('quizCsvFileError');
+                if (errorElement) {
+                    errorElement.textContent = '';
                 }
             });
         }
@@ -4820,6 +4993,28 @@ class TeacherDashboard {
     async handleQuizCsvUpload(e) {
         e.preventDefault();
         const form = e.target;
+        
+        // Custom validation: Check if file is selected
+        const fileInput = form.querySelector('input[name="csv"]');
+        const errorElement = document.getElementById('quizCsvFileError');
+        
+        // Clear previous error
+        errorElement.textContent = '';
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            errorElement.textContent = 'Please select a file.';
+            fileInput.focus();
+            return;
+        }
+        
+        // Check if file is CSV
+        const file = fileInput.files[0];
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            errorElement.textContent = 'Please select a valid CSV file.';
+            fileInput.focus();
+            return;
+        }
+        
         const formData = new FormData(form);
 
         try {
@@ -4840,7 +5035,7 @@ class TeacherDashboard {
             }
         } catch (error) {
             console.error('CSV upload error:', error);
-            this.showMessage('Error processing CSV file', 'error');
+            this.showMessage('No valid questions found in CSV file', 'error');
         } finally {
             this.hideLoading();
             form.reset();
@@ -4852,6 +5047,14 @@ class TeacherDashboard {
         const createBtn = document.getElementById('createQuizBtn');
         if (createBtn) createBtn.click();
 
+        // Guarantee Save to Draft visibility after CSV flow
+        const saveDraftBtn = document.getElementById('saveDraftBtn');
+        const updateDraftBtn = document.getElementById('updateDraftBtn');
+        const publishBtn = document.getElementById('publishQuizBtn');
+        if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+        if (updateDraftBtn) updateDraftBtn.style.display = 'none';
+        if (publishBtn) publishBtn.style.display = 'inline-block';
+
         // Clear existing questions
         const container = document.getElementById('questionsContainer');
         if (container) container.innerHTML = '';
@@ -4862,92 +5065,113 @@ class TeacherDashboard {
         });
     }
 
-    showQuizPreviewModal(formData, isEdit, quizId) {
-        // Store data for confirmation
-        this.pendingQuizData = {
-            formData: formData,
-            isEdit: isEdit,
-            quizId: quizId
-        };
+    renderQuizPreview(quizData, mode = 'create', quizId = null) {
+        const title = quizData.title || 'Untitled Quiz';
+        const description = mode === 'publish'
+            ? 'Please review your quiz details before publishing'
+            : 'Please review your quiz details before creating';
+        const duration = quizData.duration || 0;
+        const totalMarks = quizData.totalMarks || (quizData.questions?.length || 0);
+        const questions = Array.isArray(quizData.questions) ? quizData.questions : [];
+        const subject = quizData.subject || '—';
+        const className = quizData.class || '—';
+        const startTime = quizData.startTime || quizData.start || null;
+        const endTime = quizData.endTime || quizData.end || null;
 
-        // If Editing, Skip Preview and Submit Directly
+        const headerTitleEl = document.getElementById('previewHeaderTitle');
+        const headerDescEl = document.getElementById('previewHeaderDescription');
+        const titleEl = document.getElementById('previewTitle');
+        const subjectEl = document.getElementById('previewSubject');
+        const classEl = document.getElementById('previewClass');
+        const totalQEl = document.getElementById('previewTotalQuestions');
+        const durationEl = document.getElementById('previewDuration');
+        const marksEl = document.getElementById('previewTotalMarks');
+        const startEl = document.getElementById('previewStartTime');
+        const endEl = document.getElementById('previewEndTime');
+        const countBadgeEl = document.getElementById('previewQuestionCountBadge');
+        const listEl = document.getElementById('quizPreviewQuestionsList');
+        const confirmBtn = document.getElementById('confirmCreateQuizBtn');
+        const cancelBtn = document.getElementById('cancelQuizPreview');
+        const closeBtn = document.getElementById('closeQuizPreviewModal');
+
+        if (headerTitleEl) headerTitleEl.textContent = 'Quiz Confirmation';
+        if (headerDescEl) headerDescEl.textContent = description;
+        if (titleEl) titleEl.textContent = title;
+        if (subjectEl) subjectEl.textContent = subject;
+        if (classEl) classEl.textContent = className;
+        if (durationEl) durationEl.textContent = `${parseInt(duration) || 0} minutes`;
+        if (marksEl) marksEl.textContent = totalMarks;
+        if (totalQEl) totalQEl.textContent = `${questions.length} questions`;
+        if (countBadgeEl) countBadgeEl.textContent = `${questions.length} questions`;
+        if (startEl) startEl.textContent = startTime ? moment(startTime).format('MMM D, YYYY, h:mm A') : '—';
+        if (endEl) endEl.textContent = endTime ? moment(endTime).format('MMM D, YYYY, h:mm A') : '—';
+
+        if (listEl) {
+            listEl.innerHTML = '';
+            questions.forEach((q, index) => {
+                const correctKey = (q.correctOption || q.correct || '').toLowerCase();
+                const card = document.createElement('article');
+                card.className = 'quiz-preview-question-card';
+                const optionsHtml = (q.options || []).map((opt, i) => {
+                    const key = String.fromCharCode(97 + i);
+                    const isCorrect = key === correctKey;
+                    return `
+                        <div class="quiz-preview-option ${isCorrect ? 'correct' : ''}">
+                            <span class="quiz-preview-option-label">${String.fromCharCode(65 + i)}.</span>
+                            <span class="quiz-preview-option-text">${this.escapeHtml(opt)}</span>
+                        </div>
+                    `;
+                }).join('');
+                card.innerHTML = `
+                    <div class="quiz-preview-question-header">
+                        <span class="quiz-preview-question-number">${index + 1}</span>
+                        <h3 class="quiz-preview-question-text">${this.escapeHtml(q.question || q.text || '')}</h3>
+                        <span class="quiz-preview-question-marks">${q.marks || 1} marks</span>
+                    </div>
+                    <div class="quiz-preview-options-list">
+                        ${optionsHtml}
+                    </div>
+                `;
+                listEl.appendChild(card);
+            });
+        }
+
+        if (cancelBtn) {
+            const newCancel = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+            newCancel.addEventListener('click', () => this.hideModal('quizPreviewModal'));
+        }
+
+        if (closeBtn) {
+            const newClose = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newClose, closeBtn);
+            newClose.addEventListener('click', () => this.hideModal('quizPreviewModal'));
+        }
+
+        if (confirmBtn) {
+            const newConfirm = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+            if (mode === 'publish') {
+                newConfirm.innerHTML = '<svg class="quiz-preview-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>Confirm Publish';
+                this.currentQuizData = { quizData, quizId };
+                newConfirm.addEventListener('click', () => this.confirmPublishFromPreview());
+            } else {
+                newConfirm.innerHTML = '<svg class="quiz-preview-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Create Quiz';
+                this.pendingQuizData = { formData: quizData, isEdit: false, quizId: null };
+                newConfirm.addEventListener('click', () => this.confirmCreateQuiz());
+            }
+        }
+
+        this.showModal('quizPreviewModal');
+    }
+
+    showQuizPreviewModal(formData, isEdit, quizId) {
+        this.pendingQuizData = { formData, isEdit, quizId };
         if (isEdit) {
             this.confirmCreateQuiz();
             return;
         }
-
-        // Populate Summary
-        const title = formData.title || '';
-        const subject = formData.subject || '';
-        const className = formData.class || '';
-        const duration = formData.duration || 30;
-        const totalMarks = formData.totalMarks || formData.questions.length || 0;
-
-        // Format Dates
-        let startTime = 'Not Set';
-        let endTime = 'Not Set';
-
-        if (formData.startTime) {
-            startTime = moment(formData.startTime).format('MMM D, YYYY h:mm A');
-        }
-        if (formData.endTime) {
-            endTime = moment(formData.endTime).format('MMM D, YYYY h:mm A');
-        }
-
-        document.getElementById('previewTitle').textContent = title;
-        document.getElementById('previewSubject').textContent = subject;
-        document.getElementById('previewClass').textContent = className;
-        document.getElementById('previewTotalMarks').textContent = totalMarks;
-        document.getElementById('previewDuration').textContent = parseInt(duration) + ' mins';
-        document.getElementById('previewStartTime').textContent = startTime;
-        document.getElementById('previewEndTime').textContent = endTime;
-
-        // Populate Questions
-        const questions = formData.questions || [];
-        document.getElementById('previewTotalQuestions').textContent = questions.length;
-        document.getElementById('previewQuestionCountBadge').textContent = questions.length;
-
-        const questionsListContainer = document.getElementById('quizPreviewQuestionsList');
-        if (questionsListContainer) {
-            questionsListContainer.innerHTML = '';
-
-            questions.forEach((q, index) => {
-                const questionCard = document.createElement('div');
-                questionCard.className = 'question-preview-card';
-
-                // Identify correct option
-                const correctOptionKey = (q.correctOption || q.correct || '').toLowerCase(); // 'a', 'b', 'c', 'd'
-
-                const optionsHtml = q.options.map((opt, i) => {
-                    const keys = ['a', 'b', 'c', 'd'];
-                    const currentKey = keys[i];
-                    const isCorrect = currentKey === correctOptionKey;
-
-                    return `
-                        <div class="option-preview-item ${isCorrect ? 'correct' : ''}">
-                            <span class="opt-label">${currentKey.toUpperCase()}</span>
-                            <span class="opt-text">${opt}</span>
-                            ${isCorrect ? '<i class="fas fa-check-circle" style="color: #15803d; margin-left: auto;"></i>' : ''}
-                        </div>
-                    `;
-                }).join('');
-
-
-                questionCard.innerHTML = `
-                    <div class="question-text">
-                        <span class="q-num-circle">${index + 1}</span>
-                        <span>${q.question}</span>
-                    </div>
-                    <div class="options-preview-grid">
-                        ${optionsHtml}
-                    </div>
-                `;
-
-                questionsListContainer.appendChild(questionCard);
-            });
-        }
-
-        this.showModal('quizPreviewModal');
+        this.renderQuizPreview(formData, 'create', null);
     }
 
     async confirmCreateQuiz() {
@@ -5017,7 +5241,7 @@ class TeacherDashboard {
     }
 
     // Draft functionality methods
-    getQuizFormData() {
+    getQuizFormData(includeStatus = null) {
         const form = document.getElementById('createQuizForm');
         if (!form) return null;
 
@@ -5039,9 +5263,14 @@ class TeacherDashboard {
                 options.push(input ? input.value : '');
             });
 
-            // Get correct answer
-            const answerSelect = questionEl.querySelector(`select[name="answers[]"]`);
-            const correctOption = answerSelect ? answerSelect.value : '0';
+            // Get correct answer from checkboxes
+            const answerCheckboxes = questionEl.querySelectorAll(`input[name^="answers"]`);
+            let correctOption = '0'; // default to first option
+            answerCheckboxes.forEach((checkbox) => {
+                if (checkbox.checked) {
+                    correctOption = checkbox.value;
+                }
+            });
 
             if (questionText.trim()) {
                 questions.push({
@@ -5065,7 +5294,7 @@ class TeacherDashboard {
             }
         }
 
-        return {
+        const result = {
             title: formData.get('title'),
             description: '',
             subject: formData.get('subject') || 'General Knowledge',
@@ -5076,11 +5305,30 @@ class TeacherDashboard {
             duration: parseInt(formData.get('duration')) || 30,
             questions: questions
         };
+
+        // Add status if provided
+        if (includeStatus) {
+            result.status = includeStatus;
+        }
+
+        return result;
     }
 
     async saveDraft() {
         try {
-            const formData = this.getQuizFormData();
+            const form = document.getElementById('createQuizForm');
+            if (!form) {
+                this.showMessage('Form not found', 'error');
+                return;
+            }
+
+            // Validate the form before saving draft
+            if (!this.validateQuizForm(form)) {
+                // Validation failed - errors are shown inline
+                return;
+            }
+
+            const formData = this.getQuizFormData('draft');
             if (!formData) {
                 return; // Error already shown in getQuizFormData
             }
@@ -5155,13 +5403,13 @@ class TeacherDashboard {
 
         // Update the header and buttons to reflect draft status
         const headerText = document.querySelector('#quizFormHeader h2');
-        const submitBtn = document.querySelector('#createUpdateQuizBtn');
         const saveDraftBtn = document.getElementById('saveDraftBtn');
+        const updateDraftBtn = document.getElementById('updateDraftBtn');
         const publishBtn = document.getElementById('publishQuizBtn');
-
+        
         if (headerText) headerText.innerHTML = '<i class="fas fa-edit"></i> Edit Quiz';
-        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Quiz';
         if (saveDraftBtn) saveDraftBtn.style.display = 'none';
+        if (updateDraftBtn) updateDraftBtn.style.display = 'inline-block';
         if (publishBtn) publishBtn.style.display = 'inline-block';
 
         // Show success message
@@ -5552,14 +5800,40 @@ class TeacherDashboard {
     async viewQuizAttempts(quizId) {
         try {
             this.showLoading();
-            
-            const response = await this.apiCall(`/teachers/quizzes/${quizId}/attempts`);
-            
-            if (response.success) {
-                this.showQuizAttemptsModal(response.data);
-            } else {
-                this.showMessage(response.message || 'Failed to load quiz attempts', 'error');
+
+            this.ensureQuizDetailsListeners();
+            this.showQuizDetailsPage();
+
+            this.quizDetailsState = {
+                quizId,
+                filter: 'all',
+                search: ''
+            };
+
+            const searchInput = document.getElementById('qdSearchInput');
+            if (searchInput) searchInput.value = '';
+            this.setQuizDetailsFilter('all', true);
+
+            const [attemptsResponse, quizResponse] = await Promise.all([
+                this.apiCall(`/teachers/quizzes/${quizId}/attempts`, 'GET'),
+                this.apiCall(`/quizzes/${quizId}`, 'GET')
+            ]);
+
+            if (!attemptsResponse?.success) {
+                this.showMessage(attemptsResponse?.message || 'Failed to load quiz attempts', 'error');
+                return;
             }
+            if (!quizResponse?.success) {
+                this.showMessage(quizResponse?.message || 'Failed to load quiz details', 'error');
+                return;
+            }
+
+            this.quizDetailsData = {
+                quiz: quizResponse.data,
+                attempts: attemptsResponse.data
+            };
+
+            this.renderQuizDetailsPage();
         } catch (error) {
             console.error('Error loading quiz attempts:', error);
             this.showMessage('Error loading quiz attempts', 'error');
@@ -5568,167 +5842,354 @@ class TeacherDashboard {
         }
     }
 
-    showQuizAttemptsModal(data) {
-        const modal = document.getElementById('quizAttemptsModal');
-        if (!modal) {
-            // Create modal if it doesn't exist
-            this.createQuizAttemptsModal();
-            return this.showQuizAttemptsModal(data);
+    ensureQuizDetailsListeners() {
+        if (this._quizDetailsListenersAdded) return;
+
+        document.getElementById('backToQuizListFromDetailsBtn')?.addEventListener('click', () => {
+            this.hideQuizDetailsPage();
+        });
+
+        document.getElementById('qdSearchInput')?.addEventListener('input', (e) => {
+            this.quizDetailsState = this.quizDetailsState || {};
+            this.quizDetailsState.search = e.target.value || '';
+            this.renderQuizDetailsPage();
+        });
+
+        document.querySelectorAll('.qd-chip').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const filter = btn.dataset.filter || 'all';
+                this.setQuizDetailsFilter(filter);
+            });
+        });
+
+        this._quizDetailsListenersAdded = true;
+    }
+
+    showQuizDetailsPage() {
+        const quizMainCard = document.querySelector('.quiz-main-card');
+        if (quizMainCard) quizMainCard.style.display = 'none';
+
+        const quizMainHeader = document.getElementById('quizMainPageHeader');
+        if (quizMainHeader) quizMainHeader.style.display = 'none';
+
+        const quizFormHeader = document.getElementById('quizFormHeader');
+        const quizCreationForm = document.getElementById('quizCreationForm');
+        if (quizFormHeader) quizFormHeader.style.display = 'none';
+        if (quizCreationForm) quizCreationForm.style.display = 'none';
+
+        const details = document.getElementById('quizDetailsPage');
+        if (details) details.style.display = 'block';
+    }
+
+    hideQuizDetailsPage() {
+        const details = document.getElementById('quizDetailsPage');
+        if (details) details.style.display = 'none';
+
+        const quizMainCard = document.querySelector('.quiz-main-card');
+        if (quizMainCard) quizMainCard.style.display = 'flex';
+
+        const quizMainHeader = document.getElementById('quizMainPageHeader');
+        if (quizMainHeader) quizMainHeader.style.display = 'flex';
+
+        this.quizDetailsData = null;
+        this.quizDetailsState = null;
+    }
+
+    setQuizDetailsFilter(filter, skipRender = false) {
+        this.quizDetailsState = this.quizDetailsState || {};
+        this.quizDetailsState.filter = filter;
+
+        document.querySelectorAll('.qd-chip').forEach((b) => b.classList.remove('active'));
+        const activeBtn = document.querySelector(`.qd-chip[data-filter="${filter}"]`);
+        if (activeBtn) activeBtn.classList.add('active');
+
+        if (!skipRender) this.renderQuizDetailsPage();
+    }
+
+    renderQuizDetailsPage() {
+        if (!this.quizDetailsData?.quiz || !this.quizDetailsData?.attempts) return;
+
+        const quiz = this.quizDetailsData.quiz;
+        const {
+            totalStudents,
+            attemptedCount,
+            notAttemptedCount,
+            attemptedStudents = [],
+            notAttemptedStudents = []
+        } = this.quizDetailsData.attempts || {};
+
+        // Header title
+        const titleEl = document.getElementById('qdQuizTitle');
+        const subtitleEl = document.getElementById('qdQuizSubtitle');
+        if (titleEl) titleEl.textContent = quiz.title || 'Untitled Quiz';
+        if (subtitleEl) subtitleEl.textContent = `${quiz.class || '—'} • ${quiz.subject || '—'}`;
+
+        // Summary
+        document.getElementById('qdTotalStudents').textContent = totalStudents ?? 0;
+        document.getElementById('qdAttemptedCount').textContent = attemptedCount ?? 0;
+        document.getElementById('qdNotAttemptedCount').textContent = notAttemptedCount ?? 0;
+
+        const state = this.quizDetailsState || { filter: 'all', search: '' };
+        const q = (state.search || '').trim().toLowerCase();
+
+        const attemptedFiltered = attemptedStudents.filter((s) => (s.name || '').toLowerCase().includes(q));
+        const notAttemptedFiltered = notAttemptedStudents.filter((s) => (s.name || '').toLowerCase().includes(q));
+
+        // Filter behavior
+        const attemptedSection = document.getElementById('qdAttemptedSection');
+        const notAttemptedSection = document.getElementById('qdNotAttemptedSection');
+        const showAttempted = state.filter === 'all' || state.filter === 'attempted';
+        const showNotAttempted = state.filter === 'all' || state.filter === 'notAttempted';
+        if (attemptedSection) attemptedSection.style.display = showAttempted ? 'block' : 'none';
+        if (notAttemptedSection) notAttemptedSection.style.display = showNotAttempted ? 'block' : 'none';
+
+        // Section badges (reflect current search)
+        document.getElementById('qdAttemptedBadge').textContent = attemptedFiltered.length;
+        document.getElementById('qdNotAttemptedBadge').textContent = notAttemptedFiltered.length;
+
+        // Attempted table + mobile cards
+        const attemptedTbody = document.getElementById('qdAttemptedTbody');
+        const attemptedCards = document.getElementById('qdAttemptedCards');
+
+        // If no assigned students, show a friendly empty state (prevents "all attempted" confusion)
+        if ((totalStudents ?? 0) === 0) {
+            const emptyAssigned = `
+                <div class="qd-empty-state">
+                    <div class="qd-empty-title">No students assigned to this quiz</div>
+                    <div class="qd-empty-subtitle">Add students to your class to start tracking attempts.</div>
+                </div>
+            `;
+
+            if (attemptedTbody) {
+                attemptedTbody.innerHTML = `<tr><td colspan="5">${emptyAssigned}</td></tr>`;
+            }
+            if (attemptedCards) attemptedCards.innerHTML = emptyAssigned;
+
+            const notAttemptedTbody = document.getElementById('qdNotAttemptedTbody');
+            const notAttemptedCards = document.getElementById('qdNotAttemptedCards');
+            if (notAttemptedTbody) {
+                notAttemptedTbody.innerHTML = `<tr><td colspan="2">${emptyAssigned}</td></tr>`;
+            }
+            if (notAttemptedCards) notAttemptedCards.innerHTML = emptyAssigned;
+
+            return;
         }
 
-        const { quiz, attempts, summary, nonAttemptedStudents } = data;
-        
-        // Update quiz info
-        document.getElementById('qaQuizTitle').textContent = quiz.title;
-        document.getElementById('qaQuizSubject').textContent = quiz.subject;
-        document.getElementById('qaQuizClass').textContent = quiz.class;
-        document.getElementById('qaQuizQuestions').textContent = quiz.questions;
-        document.getElementById('qaQuizTotalMarks').textContent = quiz.totalMarks;
-
-        // Update summary
-        document.getElementById('qaTotalStudents').textContent = summary.totalStudents;
-        document.getElementById('qaAttemptedStudents').textContent = summary.attemptedStudents;
-        document.getElementById('qaNonAttemptedStudents').textContent = summary.nonAttemptedStudents;
-        document.getElementById('qaAverageScore').textContent = summary.averageScore + '%';
-
-        // Update attempts table
-        const attemptsBody = document.getElementById('qaAttemptsBody');
-        if (attempts.length === 0) {
-            attemptsBody.innerHTML = '<tr><td colspan="5" class="empty">No attempts yet</td></tr>';
-        } else {
-            attemptsBody.innerHTML = attempts.map(attempt => `
+        if (attemptedFiltered.length === 0) {
+            const emptyHtml = `
                 <tr>
-                    <td>${attempt.student.name}</td>
-                    <td>${attempt.student.email}</td>
-                    <td>${attempt.student.class || '-'}</td>
-                    <td>${attempt.obtainedMarks}/${attempt.totalMarks}</td>
-                    <td>${attempt.percentage}%</td>
-                    <td>${new Date(attempt.submissionTime).toLocaleString()}</td>
-                    <td>
-                        <button class="btn-view-details" onclick="dashboard.viewAttemptDetails('${attempt._id}')">
-                            View Details
-                        </button>
+                    <td colspan="5">
+                        <div class="qd-empty-state">
+                            <div class="qd-empty-title">No attempts yet</div>
+                            <div class="qd-empty-subtitle">Students will appear here once they submit this quiz.</div>
+                        </div>
                     </td>
                 </tr>
-            `).join('');
-        }
-
-        // Update non-attempted students
-        const nonAttemptedBody = document.getElementById('qaNonAttemptedBody');
-        if (nonAttemptedStudents.length === 0) {
-            nonAttemptedBody.innerHTML = '<tr><td colspan="3" class="empty">All students have attempted</td></tr>';
-        } else {
-            nonAttemptedBody.innerHTML = nonAttemptedStudents.map(student => `
-                <tr>
-                    <td>${student.name}</td>
-                    <td>${student.email}</td>
-                    <td>${student.class || '-'}</td>
-                </tr>
-            `).join('');
-        }
-
-        this.showModal('quizAttemptsModal');
-    }
-
-    createQuizAttemptsModal() {
-        const modalHtml = `
-            <div id="quizAttemptsModal" class="modal">
-                <div class="modal-content modal-large">
-                    <div class="modal-header">
-                        <h2><i class="fas fa-chart-bar"></i> Quiz Attempts</h2>
-                        <span class="close" onclick="dashboard.hideModal('quizAttemptsModal')">&times;</span>
-                    </div>
-                    <div class="modal-body">
-                        <!-- Quiz Info -->
-                        <div class="quiz-info-section">
-                            <h3 id="qaQuizTitle"></h3>
-                            <div class="quiz-details">
-                                <span><strong>Subject:</strong> <span id="qaQuizSubject"></span></span>
-                                <span><strong>Class:</strong> <span id="qaQuizClass"></span></span>
-                                <span><strong>Questions:</strong> <span id="qaQuizQuestions"></span></span>
-                                <span><strong>Total Marks:</strong> <span id="qaQuizTotalMarks"></span></span>
-                            </div>
-                        </div>
-
-                        <!-- Summary -->
-                        <div class="attempts-summary">
-                            <div class="summary-card">
-                                <h4>Total Students</h4>
-                                <p id="qaTotalStudents">0</p>
-                            </div>
-                            <div class="summary-card">
-                                <h4>Attempted</h4>
-                                <p id="qaAttemptedStudents">0</p>
-                            </div>
-                            <div class="summary-card">
-                                <h4>Not Attempted</h4>
-                                <p id="qaNonAttemptedStudents">0</p>
-                            </div>
-                            <div class="summary-card">
-                                <h4>Average Score</h4>
-                                <p id="qaAverageScore">0%</p>
-                            </div>
-                        </div>
-
-                        <!-- Tabs -->
-                        <div class="tabs">
-                            <button class="tab-btn active" onclick="dashboard.switchTab('attempts')">Attempts</button>
-                            <button class="tab-btn" onclick="dashboard.switchTab('non-attempted')">Not Attempted</button>
-                        </div>
-
-                        <!-- Attempts Table -->
-                        <div id="attemptsTab" class="tab-content active">
-                            <table class="attempts-table">
-                                <thead>
-                                    <tr>
-                                        <th>Student Name</th>
-                                        <th>Email</th>
-                                        <th>Class</th>
-                                        <th>Marks</th>
-                                        <th>Percentage</th>
-                                        <th>Submission Time</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="qaAttemptsBody">
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Non-Attempted Table -->
-                        <div id="non-attemptedTab" class="tab-content">
-                            <table class="attempts-table">
-                                <thead>
-                                    <tr>
-                                        <th>Student Name</th>
-                                        <th>Email</th>
-                                        <th>Class</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="qaNonAttemptedBody">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+            `;
+            if (attemptedTbody) attemptedTbody.innerHTML = emptyHtml;
+            if (attemptedCards) attemptedCards.innerHTML = `
+                <div class="qd-empty-state">
+                    <div class="qd-empty-title">No attempts yet</div>
+                    <div class="qd-empty-subtitle">Students will appear here once they submit this quiz.</div>
                 </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-    }
+            `;
+        } else {
+            if (attemptedTbody) {
+                attemptedTbody.innerHTML = attemptedFiltered.map((s) => {
+                    const total = (s.totalMarks ?? quiz.totalMarks ?? 0);
+                    const when = s.attemptTime ? moment(s.attemptTime).format('DD MMM YYYY, HH:mm') : '—';
+                    return `
+                        <tr>
+                            <td>${s.name || '—'}</td>
+                            <td>${s.score ?? 0} / ${total}</td>
+                            <td>${when}</td>
+                            <td><span class="qd-badge qd-badge-success">ATTEMPTED</span></td>
+                            <td>
+                                <button class="qd-btn-outline" type="button" onclick="dashboard.viewAttemptDetails('${s.id}')">
+                                    View Details
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
 
-    switchTab(tabName) {
-        // Hide all tabs
-        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        
-        // Show selected tab
-        document.getElementById(tabName + 'Tab').classList.add('active');
-        event.target.classList.add('active');
+            if (attemptedCards) {
+                attemptedCards.innerHTML = attemptedFiltered.map((s) => {
+                    const total = (s.totalMarks ?? quiz.totalMarks ?? 0);
+                    const when = s.attemptTime ? moment(s.attemptTime).format('DD MMM YYYY, HH:mm') : '—';
+                    return `
+                        <div class="qd-mobile-card">
+                            <div class="qd-mobile-card-top">
+                                <div class="qd-mobile-name">${s.name || '—'}</div>
+                                <span class="qd-badge qd-badge-success">ATTEMPTED</span>
+                            </div>
+                            <div class="qd-mobile-meta">
+                                <div><span class="qd-mobile-label">Score</span><span class="qd-mobile-value">${s.score ?? 0} / ${total}</span></div>
+                                <div><span class="qd-mobile-label">Attempt Time</span><span class="qd-mobile-value">${when}</span></div>
+                            </div>
+                            <div class="qd-mobile-actions">
+                                <button class="qd-btn-outline" type="button" onclick="dashboard.viewAttemptDetails('${s.id}')">View Details</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Not attempted table + mobile cards
+        const notAttemptedTbody = document.getElementById('qdNotAttemptedTbody');
+        const notAttemptedCards = document.getElementById('qdNotAttemptedCards');
+
+        if ((notAttemptedCount ?? 0) === 0) {
+            const okHtml = `
+                <tr>
+                    <td colspan="2">
+                        <div class="qd-empty-state qd-empty-state-success">
+                            <div class="qd-empty-title"><i class="fas fa-check-circle"></i> All students have attempted this quiz</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            if (notAttemptedTbody) notAttemptedTbody.innerHTML = okHtml;
+            if (notAttemptedCards) notAttemptedCards.innerHTML = `
+                <div class="qd-empty-state qd-empty-state-success">
+                    <div class="qd-empty-title"><i class="fas fa-check-circle"></i> All students have attempted this quiz</div>
+                </div>
+            `;
+        } else if (notAttemptedFiltered.length === 0) {
+            const emptyHtml = `
+                <tr>
+                    <td colspan="2">
+                        <div class="qd-empty-state">
+                            <div class="qd-empty-title">No students found</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            if (notAttemptedTbody) notAttemptedTbody.innerHTML = emptyHtml;
+            if (notAttemptedCards) notAttemptedCards.innerHTML = `
+                <div class="qd-empty-state">
+                    <div class="qd-empty-title">No students found</div>
+                </div>
+            `;
+        } else {
+            if (notAttemptedTbody) {
+                notAttemptedTbody.innerHTML = notAttemptedFiltered.map((s) => `
+                    <tr>
+                        <td>${s.name || '—'}</td>
+                        <td><span class="qd-badge qd-badge-danger">NOT ATTEMPTED</span></td>
+                    </tr>
+                `).join('');
+            }
+
+            if (notAttemptedCards) {
+                notAttemptedCards.innerHTML = notAttemptedFiltered.map((s) => `
+                    <div class="qd-mobile-card">
+                        <div class="qd-mobile-card-top">
+                            <div class="qd-mobile-name">${s.name || '—'}</div>
+                            <span class="qd-badge qd-badge-danger">NOT ATTEMPTED</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
     }
 
     async viewAttemptDetails(attemptId) {
         // This can be implemented to show detailed answer breakdown
         this.showMessage('Detailed view coming soon!', 'info');
+    }
+
+    // Real-time quiz expiry monitoring
+    startQuizExpiryMonitoring() {
+        // Clear any existing interval
+        if (this.quizExpiryInterval) {
+            clearInterval(this.quizExpiryInterval);
+        }
+
+        // Check every 30 seconds
+        this.quizExpiryInterval = setInterval(() => {
+            this.updateQuizStatuses();
+        }, 30000);
+
+        // Initial check
+        this.updateQuizStatuses();
+    }
+
+    updateQuizStatuses() {
+        if (!this.currentQuizzes || this.currentQuizzes.length === 0) return;
+
+        const now = new Date();
+        let statusChanged = false;
+
+        this.currentQuizzes.forEach(quiz => {
+            const isDraft = quiz.status === 'draft';
+            const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+            const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+            
+            const isExpired = !isDraft && endTime && endTime < now;
+            const isStarted = !isDraft && startTime && startTime <= now;
+
+            // Find the quiz card element
+            const quizCard = document.querySelector(`[data-quiz-item-id="${quiz._id}"]`);
+            if (!quizCard) return;
+
+            // Update status badge if needed
+            const statusButton = quizCard.querySelector('.btn-status');
+            if (statusButton) {
+                let newStatusClass, newStatusText;
+                if (isDraft) {
+                    newStatusClass = 'draft';
+                    newStatusText = 'DRAFT';
+                } else if (isExpired) {
+                    newStatusClass = 'expired';
+                    newStatusText = 'EXPIRED';
+                } else {
+                    newStatusClass = 'published';
+                    newStatusText = 'PUBLISHED';
+                }
+
+                // Update status if changed
+                if (!statusButton.classList.contains(newStatusClass)) {
+                    statusButton.className = `btn-status ${newStatusClass}`;
+                    statusButton.textContent = newStatusText;
+                    statusChanged = true;
+                }
+            }
+
+            // Update edit button state if needed
+            const editButton = quizCard.querySelector('.btn-edit');
+            if (editButton && !isDraft) {
+                const shouldBeDisabled = isStarted;
+                const isCurrentlyDisabled = editButton.classList.contains('disabled');
+                
+                if (shouldBeDisabled !== isCurrentlyDisabled) {
+                    if (shouldBeDisabled) {
+                        editButton.classList.add('disabled');
+                        editButton.setAttribute('disabled', 'disabled');
+                        editButton.setAttribute('title', 'Cannot edit published quiz after start time');
+                    } else {
+                        editButton.classList.remove('disabled');
+                        editButton.removeAttribute('disabled');
+                        editButton.setAttribute('title', 'Edit Quiz');
+                    }
+                    statusChanged = true;
+                }
+            }
+        });
+
+        // Show notification if status changed
+        if (statusChanged) {
+            console.log('Quiz statuses updated in real-time');
+        }
+    }
+
+    stopQuizExpiryMonitoring() {
+        if (this.quizExpiryInterval) {
+            clearInterval(this.quizExpiryInterval);
+            this.quizExpiryInterval = null;
+        }
     }
 }
 let dashboard;

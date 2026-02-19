@@ -10,6 +10,11 @@ exports.getQuizForStudent = async (req, res) => {
       return res.status(404).json({ message: "Quiz not found" });
     }
 
+    // Prevent access to draft quizzes
+    if (quiz.status === "draft") {
+      return res.status(403).json({ message: "This quiz is not available yet" });
+    }
+
     const student = await User.findOne({
       userId: req.user.userId,
       role: "student"
@@ -40,6 +45,11 @@ exports.submitQuiz = async (req, res) => {
       return res.status(404).json({ message: "Quiz not found" });
     }
 
+    // Prevent submission to draft quizzes
+    if (quiz.status === "draft") {
+      return res.status(403).json({ message: "This quiz is not available for submission" });
+    }
+
     const student = await User.findOne({
       _id: req.user.id,
       role: "student"
@@ -56,10 +66,25 @@ exports.submitQuiz = async (req, res) => {
     }
 
     let score = 0;
+    const optionMap = ["a", "b", "c", "d"];
+    const detailedAnswers = [];
+    
     quiz.questions.forEach((q, index) => {
-      if (answers[index] === q.correctOption) {
+      const ans = answers[index];
+      const studentAnswer = (ans >= 0 && ans <= 3) ? optionMap[ans] : undefined;
+      const isCorrect = studentAnswer === q.correctOption;
+      
+      if (isCorrect) {
         score++;
       }
+      
+      detailedAnswers.push({
+        questionIndex: index,
+        selectedOption: answers[index],
+        selectedAnswer: studentAnswer,
+        correctAnswer: q.correctOption,
+        isCorrect: isCorrect
+      });
     });
 
     const exists = await Mark.findOne({
@@ -73,11 +98,19 @@ exports.submitQuiz = async (req, res) => {
     }
 
     await Mark.create({
-  studentUserId: req.user.userId,
-  subject: quiz.subject,
-  score: score,
-  total: quiz.totalMarks
-});
+      studentUserId: req.user.userId,
+      subject: quiz.subject,
+      marks: score,
+      student_id: req.user.id,
+      teacherId: quiz.teacherId,
+      // Enhanced quiz tracking fields
+      quizId: quiz._id,
+      totalMarks: quiz.totalMarks,
+      answers: detailedAnswers,
+      submissionTime: new Date(),
+      quizTitle: quiz.title,
+      quizClass: quiz.class
+    });
 
 
     res.json({

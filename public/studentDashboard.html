@@ -74,10 +74,10 @@
             </div>
         </div>
 
-        <!-- Available Quizzes -->
+        <!-- Recent Quiz -->
         <div class="dashboard-card common-container">
             <div class="card-header">
-                <h3>Available Quizzes</h3>
+                <h3>Recent Quiz</h3>
             </div>
             <div class="card-content" id="availableQuizzes">
                 <p class="empty">No quizzes available</p>
@@ -91,21 +91,26 @@
 
                 <!-- Quizzes Page -->
                 <div class="page" id="quiz-page">
-                    <div class="page-header">
-                        <h2>Available Quizzes</h2>
-                    </div>
-
-                    <div class="quiz-grid" id="quizList">
-                        <p class="empty">No quizzes available</p>
+                    <div class="quiz-main-card">
+                        <div class="quiz-main-header">
+                            <div class="quiz-header-title">
+                                <div class="title-bar"></div>
+                                <h2>Quizzes</h2>
+                            </div>
+                            <div class="quiz-header-actions">
+                                <span class="quiz-count-badge" id="quizCountSubtitle">0 available</span>
+                            </div>
+                        </div>
+                        <div class="quiz-list-container">
+                            <div class="quizzes-list" id="quizList">
+                                <p class="empty">No quizzes available</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Sessions Page -->
                 <div class="page" id="sessions-page">
-                    <div class="page-header">
-                        <h2>Available Sessions</h2>
-                    </div>
-
                     <div class="sessions-container">
                         <div class="sessions-list" id="sessionsList">
                             <div class="empty">
@@ -198,52 +203,82 @@
                     </div>
                 </div>
 
-                <!-- Quiz Taking Modal -->
+                <!-- Quiz Taking Modal (reference layout: single card, header row, status bar, content, footer) -->
                 <div id="quizModal" class="modal">
-  <div class="modal-content">
+  <div class="quiz-attempt-modal-card">
+    <!-- Header: title + blue subject pill (same row) + close -->
+    <header class="quiz-attempt-header">
+      <h2 id="quizTitle" class="quiz-attempt-title">Quiz</h2>
+      <span id="quizSubjectTag" class="quiz-attempt-subject-pill">
+        <i class="fas fa-book-open"></i>
+        <span id="quizSubject">Subject</span>
+      </span>
+      <button type="button" class="quiz-attempt-close" id="closeQuizModal" title="Close">
+        <i class="fas fa-times"></i>
+      </button>
+    </header>
 
-    <div class="modal-header">
-      <div class="modal-title">
-        <h3 id="quizTitle">Quiz</h3>
-      </div>
-
-      <div class="modal-header-right">
+    <!-- Status bar: Timer (left) | Question progress (right) -->
+    <div class="quiz-attempt-statusbar">
+      <div class="quiz-attempt-timer">
+        <i class="fas fa-clock"></i>
         <span id="timeRemaining">00:00</span>
-        <button class="modal-close" id="closeQuizModal">
-          <i class="fas fa-times"></i>
+      </div>
+      <div class="quiz-attempt-progress">
+        <i class="fas fa-list-ol"></i>
+        <span id="questionProgress">Question 1 of 1 (0 answered)</span>
+      </div>
+    </div>
+
+    <!-- 1 min warning (hidden by default) -->
+    <div id="quizTimeWarningAlert" class="quiz-time-warning" style="display: none;">
+      <i class="fas fa-exclamation-triangle"></i>
+      <span>Less than 1 minute left! Submit your quiz before time runs out.</span>
+    </div>
+
+    <form id="quizForm">
+      <div id="questionsContainer"></div>
+
+      <footer class="quiz-attempt-footer">
+        <button type="button" class="btn-quiz-prev" id="quizPrevBtn">
+          <i class="fas fa-arrow-left"></i> Previous
         </button>
-      </div>
-    </div>
-
-    <div class="modal-body">
-
-      <div class="quiz-info-box">
-        <div class="quiz-info-badge">
-          <i class="fas fa-book"></i>
-          <span>Subject: <b id="quizSubject">-</b></span>
-        </div>
-
-        <div class="quiz-info-badge">
-          <i class="fas fa-clock"></i>
-          <span>Duration: <b id="quizDuration">-</b> minutes</span>
-        </div>
-      </div>
-
-      <form id="quizForm">
-        <div id="questionsContainer"></div>
-
-        <div class="modal-footer">
-          <button type="submit" class="btn-submit-quiz">
-            Submit Quiz
-          </button>
-        </div>
-      </form>
-
-    </div>
-
+        <button type="button" class="btn-quiz-next" id="quizNextBtn">
+          Next <i class="fas fa-arrow-right"></i>
+        </button>
+        <button type="submit" class="btn-quiz-submit">
+          Submit Quiz
+        </button>
+      </footer>
+    </form>
   </div>
 </div>
 
+                <!-- Quiz Result Modal -->
+                <div id="quizResultModal" class="modal">
+                    <div class="quiz-result-modal-content">
+                        <div class="quiz-result-header">
+                            <h3 id="quizResultTitle">Quiz Result</h3>
+                            <button class="quiz-modal-close" id="closeQuizResultModal">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="quiz-result-body">
+                            <div class="quiz-result-score-row">
+                                <span class="quiz-result-label">Your Score</span>
+                                <span id="quizResultScore" class="quiz-result-value">0 / 0</span>
+                            </div>
+                            <div class="quiz-result-score-row">
+                                <span class="quiz-result-label">Percentage</span>
+                                <span id="quizResultPercentage" class="quiz-result-value">0%</span>
+                            </div>
+                            <div class="quiz-result-score-row">
+                                <span class="quiz-result-label">Submitted on</span>
+                                <span id="quizResultTime" class="quiz-result-value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Edit Profile Modal -->
                 <div class="modal" id="editProfileModal">

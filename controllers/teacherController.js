@@ -599,7 +599,7 @@ exports.getQuizAttempts = async (req, res) => {
 
     // Verify the quiz belongs to this teacher
     const Quiz = require("../models/Quiz");
-    const quiz = await Quiz.findOne({ _id: quizId, teacherId });
+    const quiz = await Quiz.findOne({ _id: quizId, teacherId }).select("class totalMarks");
     
     if (!quiz) {
       return res.status(404).json({ 
@@ -608,55 +608,74 @@ exports.getQuizAttempts = async (req, res) => {
       });
     }
 
-    // Get all marks for this quiz
-    const Mark = require("../models/Mark");
-    const User = require("../models/User");
-    
-    const attempts = await Mark.find({ quizId })
-      .populate('student_id', 'name email userId class')
-      .sort({ submissionTime: -1 });
+    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    // Get all students for this teacher to show who hasn't attempted
-    const allStudents = await User.find({ 
-      teacherId, 
-      role: "student" 
-    }).select('name email userId class');
+    // Include all assigned students (teacher's students, scoped to quiz class if present)
+    const baseAssignedQuery = { teacherId, role: "student" };
+    const className = (quiz.class || "").trim();
 
-    // Separate attempted and non-attempted students
-    const attemptedStudentIds = attempts.map(attempt => attempt.student_id._id.toString());
-    const nonAttemptedStudents = allStudents.filter(student => 
-      !attemptedStudentIds.includes(student._id.toString())
-    );
+    let assignedStudentsQuery = { ...baseAssignedQuery };
+    if (className) {
+      // tolerate casing / extra spaces (common data issue)
+      assignedStudentsQuery.class = new RegExp(`^\\s*${escapeRegex(className)}\\s*$`, "i");
+    }
 
-    res.json({
+    let assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
+
+    // Fallback: if class filter yields none, show all teacher students (prevents 0/0/0 UI)
+    if (assignedStudents.length === 0 && className) {
+      assignedStudentsQuery = { ...baseAssignedQuery };
+      assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
+    }
+
+    const assignedStudentIds = assignedStudents.map((s) => s._id);
+
+    // Latest submission per student counts as "Attempted"
+    const marks = await Mark.find({
+      quizId,
+      teacherId,
+      student_id: { $in: assignedStudentIds }
+    })
+      .populate("student_id", "name")
+      .sort({ submissionTime: -1 })
+      .lean();
+
+    const latestAttemptByStudentId = new Map();
+    for (const m of marks) {
+      const sid = m?.student_id?._id?.toString();
+      if (!sid) continue;
+      if (!latestAttemptByStudentId.has(sid)) {
+        latestAttemptByStudentId.set(sid, m);
+      }
+    }
+
+    const attemptedStudents = Array.from(latestAttemptByStudentId.values()).map((m) => ({
+      id: m.student_id._id,
+      name: m.student_id.name,
+      score: m.marks ?? 0,
+      totalMarks: m.totalMarks ?? quiz.totalMarks ?? 0,
+      attemptTime: m.submissionTime
+    }));
+
+    const attemptedIdSet = new Set(attemptedStudents.map((s) => s.id.toString()));
+
+    const notAttemptedStudents = assignedStudents
+      .filter((s) => !attemptedIdSet.has(s._id.toString()))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }))
+      .map((s) => ({ id: s._id, name: s.name }));
+
+    const totalStudents = assignedStudents.length;
+    const attemptedCount = attemptedStudents.length;
+    const notAttemptedCount = notAttemptedStudents.length;
+
+    return res.json({
       success: true,
       data: {
-        quiz: {
-          _id: quiz._id,
-          title: quiz.title,
-          subject: quiz.subject,
-          class: quiz.class,
-          totalMarks: quiz.totalMarks,
-          questions: quiz.questions.length
-        },
-        attempts: attempts.map(attempt => ({
-          _id: attempt._id,
-          student: attempt.student_id,
-          obtainedMarks: attempt.marks,
-          totalMarks: attempt.totalMarks,
-          percentage: attempt.totalMarks > 0 ? ((attempt.marks / attempt.totalMarks) * 100).toFixed(1) : 0,
-          submissionTime: attempt.submissionTime,
-          answers: attempt.answers,
-          status: 'submitted'
-        })),
-        summary: {
-          totalStudents: allStudents.length,
-          attemptedStudents: attempts.length,
-          nonAttemptedStudents: nonAttemptedStudents.length,
-          averageScore: attempts.length > 0 ? 
-            (attempts.reduce((sum, a) => sum + (a.totalMarks > 0 ? (a.marks / a.totalMarks) * 100 : 0), 0) / attempts.length).toFixed(1) : 0
-        },
-        nonAttemptedStudents
+        totalStudents,
+        attemptedCount,
+        notAttemptedCount,
+        attemptedStudents, // sorted by latest attempt due to query sort + first-seen grouping
+        notAttemptedStudents
       }
     });
 

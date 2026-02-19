@@ -56,8 +56,26 @@ class AuthSystem {
             input.addEventListener('input', () => this.clearError(input));
         });
 
-        // Required fields
-        document.querySelectorAll('[required]').forEach(input => {
+        // User ID validation
+        const userIdInput = document.getElementById('signup-userId');
+        if (userIdInput) {
+            userIdInput.addEventListener('blur', () => this.validateField(userIdInput, 'userId'));
+            userIdInput.addEventListener('input', () => this.clearError(userIdInput));
+        }
+
+        // Name validation
+        document.querySelectorAll('input[name="name"]').forEach(input => {
+            input.addEventListener('blur', () => this.validateField(input, 'name'));
+            input.addEventListener('input', () => this.clearError(input));
+        });
+
+        // Select validation
+        document.querySelectorAll('select').forEach(select => {
+            select.addEventListener('change', () => this.validateField(select, 'required'));
+        });
+
+        // Text field validation
+        document.querySelectorAll('input[type="text"]:not([name="userId"])').forEach(input => {
             input.addEventListener('blur', () => this.validateField(input, 'required'));
             input.addEventListener('input', () => this.clearError(input));
         });
@@ -115,8 +133,18 @@ class AuthSystem {
                 else if (value.length < 6) errorMsg = 'Min 6 characters';
                 else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(value)) errorMsg = 'Need uppercase, lowercase, and number';
                 break;
+            case 'userId':
+                if (!value) errorMsg = 'User ID is required';
+                else if (value.length < 3) errorMsg = 'User ID must be at least 3 characters';
+                else if (!/^[a-zA-Z0-9_]+$/.test(value)) errorMsg = 'Only letters, numbers, and underscore allowed';
+                break;
+            case 'name':
+                if (!value) errorMsg = 'Name is required';
+                else if (value.length < 2) errorMsg = 'Name must be at least 2 characters';
+                else if (!/^[a-zA-Z\s]+$/.test(value)) errorMsg = 'Only letters and spaces allowed';
+                break;
             case 'required':
-                if (!value) errorMsg = `${input.previousElementSibling.textContent} is required`;
+                if (!value) errorMsg = `${input.previousElementSibling.textContent.replace(':', '')} is required`;
                 break;
         }
 
@@ -146,28 +174,78 @@ class AuthSystem {
     showError(input, msg) {
         input.classList.add('error');
         input.classList.remove('success');
-        const errorEl = input.parentElement.querySelector('.error-message');
-        if (errorEl) errorEl.textContent = msg;
+        
+        // Find error message container
+        let errorEl = input.parentElement.querySelector('.error-message');
+        if (!errorEl) {
+            // If password input, look in the wrapper
+            const wrapper = input.closest('.password-input-wrapper');
+            if (wrapper) {
+                errorEl = wrapper.parentElement.querySelector('.error-message');
+            }
+        }
+        
+        if (errorEl) {
+            errorEl.textContent = msg;
+            errorEl.style.display = 'block';
+        }
     }
 
     showSuccess(input) {
         input.classList.add('success');
         input.classList.remove('error');
-        const errorEl = input.parentElement.querySelector('.error-message');
-        if (errorEl) errorEl.textContent = '';
+        
+        // Find error message container
+        let errorEl = input.parentElement.querySelector('.error-message');
+        if (!errorEl) {
+            // If password input, look in the wrapper
+            const wrapper = input.closest('.password-input-wrapper');
+            if (wrapper) {
+                errorEl = wrapper.parentElement.querySelector('.error-message');
+            }
+        }
+        
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.style.display = 'none';
+        }
     }
 
     clearError(input) {
         input.classList.remove('error', 'success');
-        const errorEl = input.parentElement.querySelector('.error-message');
-        if (errorEl) errorEl.textContent = '';
+        
+        // Find error message container
+        let errorEl = input.parentElement.querySelector('.error-message');
+        if (!errorEl) {
+            // If password input, look in the wrapper
+            const wrapper = input.closest('.password-input-wrapper');
+            if (wrapper) {
+                errorEl = wrapper.parentElement.querySelector('.error-message');
+            }
+        }
+        
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.style.display = 'none';
+        }
     }
 
     async handleLogin(e) {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target));
         
-        if (!this.validateLoginForm(data)) return;
+        // Clear previous errors
+        this.clearAllErrors();
+        
+        // Validate form
+        let isValid = true;
+        const emailField = document.getElementById('login-email');
+        const passwordField = document.getElementById('login-password');
+        
+        if (!this.validateField(emailField, 'email')) isValid = false;
+        if (!this.validateField(passwordField, 'required')) isValid = false;
+        
+        if (!isValid) return;
         
         this.showLoading();
         try {
@@ -197,10 +275,17 @@ class AuthSystem {
                     setTimeout(() => window.location.href = '/index.html', 1500);
                 }
             } else {
-                this.showMessage(result.message || 'Login failed', 'error');
+                // Show specific inline error messages
+                if (result.message && result.message.includes('email')) {
+                    this.showError(emailField, result.message || 'Invalid email address');
+                } else if (result.message && result.message.includes('password')) {
+                    this.showError(passwordField, result.message || 'Incorrect password');
+                } else {
+                    this.showError(emailField, result.message || 'Invalid email or password');
+                }
             }
         } catch (error) {
-            this.showMessage('Network error', 'error');
+            this.showError(emailField, 'Network error. Please try again.');
         } finally {
             this.hideLoading();
         }
@@ -210,6 +295,10 @@ class AuthSystem {
         e.preventDefault();
         const formData = new FormData(e.target);
         
+        // Clear previous errors
+        this.clearAllErrors();
+        
+        // Validate form
         if (!this.validateSignupForm(formData)) return;
         
         this.showLoading();
@@ -227,35 +316,58 @@ class AuthSystem {
                     window.location.href = '/index.html';
                 }, 2000);
             } else {
-                if (result.errors) {
+                // Show specific inline error messages
+                if (result.errors && Array.isArray(result.errors)) {
                     result.errors.forEach(err => {
                         const input = document.querySelector(`[name="${err.field}"]`);
-                        if (input) this.showError(input, err.message);
+                        if (input) {
+                            this.showError(input, err.message);
+                        }
                     });
+                } else if (result.message) {
+                    // Handle specific error messages
+                    const userIdField = document.getElementById('signup-userId');
+                    const emailField = document.getElementById('signup-email');
+                    
+                    if (result.message.includes('User ID') || result.message.includes('userId')) {
+                        this.showError(userIdField, result.message);
+                    } else if (result.message.includes('email') || result.message.includes('Email')) {
+                        this.showError(emailField, result.message);
+                    } else {
+                        // Show general error on first field
+                        this.showError(userIdField, result.message);
+                    }
+                } else {
+                    this.showError(document.getElementById('signup-userId'), 'Signup failed. Please try again.');
                 }
-                this.showMessage(result.message || 'Signup failed', 'error');
             }
         } catch (error) {
             console.error('Signup error:', error);
-            this.showMessage(`Network error: ${error.message}`, 'error');
+            this.showError(document.getElementById('signup-userId'), `Network error: ${error.message}`);
         } finally {
             this.hideLoading();
         }
     }
 
     validateLoginForm(data) {
-        return this.validateField(document.getElementById('login-email'), 'email') &&
-               this.validateField(document.getElementById('login-password'), 'required');
+        let isValid = true;
+        const emailField = document.getElementById('login-email');
+        const passwordField = document.getElementById('login-password');
+        
+        if (!this.validateField(emailField, 'email')) isValid = false;
+        if (!this.validateField(passwordField, 'required')) isValid = false;
+        
+        return isValid;
     }
 
     validateSignupForm(formData) {
         let isValid = true;
         const validations = [
-            ['signup-userId', 'required'],
-            ['signup-fullName', 'required'],
+            ['signup-userId', 'userId'],
+            ['signup-fullName', 'name'],
             ['signup-email', 'email'],
             ['signup-password', 'password'],
-            ['signup-role', 'required'],
+            ['signup-timezone', 'required'],
             ['signup-city', 'required'],
             ['signup-state', 'required'],
             ['signup-country', 'required']

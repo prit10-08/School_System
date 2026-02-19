@@ -53,8 +53,8 @@ const submitQuizValidation = [
     .withMessage("answers must be a non-empty array"),
 
   body("answers.*")
-    .isInt({ min: 0, max: 3 })
-    .withMessage("Each answer must be a number between 0 and 3")
+    .isInt({ min: -1, max: 3 })
+    .withMessage("Each answer must be -1 (unanswered) or 0-3")
 ];
 const validate = (req, res, next) => {
   const errors = validationResult(req);

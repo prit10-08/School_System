@@ -8,6 +8,7 @@ class StudentDashboard {
         this.student = null;
         this.currentQuiz = null;
         this.quizTimer = null;
+        this.currentQuestionIndex = 0;
         this.init();
     }
 
@@ -73,12 +74,36 @@ class StudentDashboard {
         // Quiz form
         document.getElementById('quizForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
-            this.submitQuiz();
+            this.submitQuiz(false);
+        });
+
+        // Quiz Previous/Next
+        document.getElementById('quizPrevBtn')?.addEventListener('click', () => {
+            this.showQuestion(this.currentQuestionIndex - 1);
+        });
+        document.getElementById('quizNextBtn')?.addEventListener('click', () => {
+            this.showQuestion(this.currentQuestionIndex + 1);
         });
 
         // Modal close buttons
         document.getElementById('closeQuizModal')?.addEventListener('click', () => {
             this.closeQuizModal();
+        });
+
+        // View Result (delegated: buttons are in dynamically rendered quiz list)
+        document.getElementById('quizList')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-quiz-view-result');
+            if (!btn) return;
+            const quizId = btn.dataset.quizId;
+            const title = btn.dataset.title || 'Quiz';
+            const obtained = parseInt(btn.dataset.obtained, 10) || 0;
+            const total = parseInt(btn.dataset.total, 10) || 0;
+            const time = btn.dataset.time || '';
+            this.showQuizResultModal({ quizId, title, obtainedMarks: obtained, totalMarks: total, submissionTime: time });
+        });
+
+        document.getElementById('closeQuizResultModal')?.addEventListener('click', () => {
+            this.closeQuizResultModal();
         });
     }
 
@@ -181,24 +206,24 @@ class StudentDashboard {
             return;
         }
 
-        // ✅ recent 2 sessions
         const recentSessions = sessions.slice(0, 2);
-
         container.innerHTML = recentSessions.map(session => `
-        <div class="recent-session-item">
-            <div class="session-title">${session.title || "Session"}</div>
-            <div class="session-meta">
-                <small>
-                    ${session.date || ""} • ${session.teacherName || "Teacher"} • ${session.duration || 60} mins
-                </small>
+        <div class="recent-session-item clickable-dashboard-item" data-page="sessions" role="button" tabindex="0">
+            <div class="recent-session-icon">
+                <i class="fas fa-calendar-alt"></i>
             </div>
-            <div class="session-meta">
-                <small>
-                    Slots: ${session.slots ? session.slots.length : 0}
-                </small>
+            <div class="recent-session-content">
+                <h4 class="recent-session-title">${session.title || "Session"}</h4>
+                <p class="recent-session-meta">${session.date || ""} • ${session.teacherName || "Teacher"} • ${session.duration || 60} mins</p>
+                ${session.slots ? `<small class="recent-session-slots">Slots: ${session.slots.length}</small>` : ""}
             </div>
         </div>
-     `).join('');
+        `).join('');
+
+        container.querySelectorAll('.recent-session-item.clickable-dashboard-item').forEach(el => {
+            el.addEventListener('click', () => this.switchPage('sessions'));
+            el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.switchPage('sessions'); } });
+        });
     }
 
     updateHeaderProfile() {
@@ -228,15 +253,19 @@ class StudentDashboard {
         }
 
         const recentMarks = marks.slice(-5).reverse();
-        container.innerHTML = recentMarks.map(mark => `
+        container.innerHTML = recentMarks.map(mark => {
+            const obtainedMarks = mark.marks || 0;
+            const totalMarks = mark.total || 0;
+            const scoreDisplay = totalMarks > 0 ? `${obtainedMarks}/${totalMarks}` : obtainedMarks;
+            return `
             <div class="recent-marks-item">
                 <div class="marks-subject">${mark.subject}</div>
                 <div class="marks-score">
-                    <span class="score-badge">${mark.score}</span>
+                    <span class="score-badge">${scoreDisplay}</span>
                     <small>${new Date(mark.createdAt).toLocaleDateString()}</small>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
     }
 
     async loadAvailableQuizzes() {
@@ -247,7 +276,10 @@ class StudentDashboard {
             this.updateQuizList(quizzes);
         } catch (error) {
             document.getElementById('availableQuizzes').innerHTML = '<p class="empty">No quizzes available</p>';
-            document.getElementById('quizList').innerHTML = '<p class="empty">No quizzes available</p>';
+            const quizList = document.getElementById('quizList');
+            if (quizList) quizList.innerHTML = '<p class="empty">No quizzes available</p>';
+            const countSubtitle = document.getElementById('quizCountSubtitle');
+            if (countSubtitle) countSubtitle.textContent = '0 available';
         }
     }
 
@@ -260,53 +292,109 @@ class StudentDashboard {
         }
 
         container.innerHTML = quizzes.slice(0, 3).map(quiz => `
-        <div class="quiz-item teacher-like-quiz-item">
+        <div class="quiz-item teacher-like-quiz-item clickable-dashboard-item" data-page="quiz" data-quiz-id="${quiz._id}" role="button" tabindex="0">
             <div class="quiz-info-small">
                 <div class="quiz-title-small">${quiz.title}</div>
                 <div class="quiz-meta-small">${quiz.subject || "Quiz"} • ${quiz.duration || 30} mins</div>
             </div>
-            <button class="btn-start-quiz-small" onclick="dashboard.startQuiz('${quiz._id}')">
-                Start
-            </button>
         </div>
-    `).join('');
+        `).join('');
+
+        container.querySelectorAll('.quiz-item.clickable-dashboard-item').forEach(el => {
+            el.addEventListener('click', () => this.switchPage('quiz'));
+            el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.switchPage('quiz'); } });
+        });
     }
 
 
     updateQuizList(quizzes) {
         const container = document.getElementById('quizList');
+        const countSubtitle = document.getElementById('quizCountSubtitle');
 
         if (!quizzes || quizzes.length === 0) {
             container.innerHTML = '<p class="empty">No quizzes available</p>';
+            if (countSubtitle) countSubtitle.textContent = '0 available';
             return;
         }
 
-        container.innerHTML = quizzes.map(quiz => `
-        <div class="student-quiz-card">
+        const now = new Date();
 
-            <div class="student-quiz-top">
-                <div>
-                    <h3 class="student-quiz-title">${quiz.title}</h3>
+        if (countSubtitle) {
+            countSubtitle.textContent = `${quizzes.length} available`;
+        }
+
+        container.innerHTML = quizzes.map(quiz => {
+            const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+            const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+            const formatScheduleDateTime = (date) => {
+                if (!date) return 'Not set';
+                return date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                }).replace(',', ',').replace(' at ', ', ');
+            };
+
+            const formattedStart = formatScheduleDateTime(startTime);
+            const formattedEnd = formatScheduleDateTime(endTime);
+            const duration = quiz.duration ? `${quiz.duration} min` : 'Not set';
+            const questionCount = quiz.questionCount ?? (quiz.questions?.length ?? 0);
+
+            const alreadySubmitted = !!quiz.alreadySubmitted;
+            const isExpired = !alreadySubmitted && endTime && endTime < now;
+            const statusClass = alreadySubmitted ? 'completed' : (isExpired ? 'expired' : 'active');
+            const statusText = alreadySubmitted ? 'COMPLETED' : (isExpired ? 'EXPIRED' : 'ACTIVE');
+
+            const subjectDisplay = (quiz.subject || 'General').toUpperCase();
+            const classDisplay = `Class ${quiz.class || 'N/A'}`;
+
+            let actionButton;
+            if (alreadySubmitted) {
+                const ob = quiz.obtainedMarks ?? 0;
+                const tot = quiz.submissionTotalMarks ?? quiz.totalMarks ?? 0;
+                const subTime = quiz.submissionTime ? new Date(quiz.submissionTime).toLocaleString() : '';
+                actionButton = `<button class="btn-quiz-view-result" data-quiz-id="${quiz._id}" data-title="${(quiz.title || 'Quiz').replace(/"/g, '&quot;')}" data-obtained="${ob}" data-total="${tot}" data-time="${String(subTime).replace(/"/g, '&quot;')}">View Result</button>`;
+            } else if (isExpired) {
+                actionButton = '<button class="btn-quiz-locked" disabled>Locked</button>';
+            } else {
+                actionButton = `<button class="btn-quiz-start" onclick="dashboard.startQuiz('${quiz._id}')">Start</button>`;
+            }
+
+            return `
+            <div class="quiz-row-card" data-quiz-item-id="${quiz._id}">
+                <div class="quiz-row-title-section">
+                    <h3 class="quiz-row-title">${quiz.title || 'Quiz'}</h3>
+                    <p class="quiz-row-subtitle">${subjectDisplay} • ${classDisplay}</p>
                 </div>
-
-                <span class="student-quiz-badge">
-                    ${quiz.subject || "Quiz"}
-                </span>
+                <div class="quiz-row-details">
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">START</span>
+                        <span class="quiz-detail-value">${formattedStart}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">END</span>
+                        <span class="quiz-detail-value">${formattedEnd}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">DURATION</span>
+                        <span class="quiz-detail-value">${duration}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">QUESTIONS</span>
+                        <span class="quiz-detail-value">${questionCount}</span>
+                    </div>
+                </div>
+                <div class="quiz-row-actions">
+                    <span class="quiz-status-badge ${statusClass}">${statusText}</span>
+                    ${actionButton}
+                </div>
             </div>
-
-            <div class="student-quiz-meta">
-                <span><i class="fas fa-question-circle"></i> ${quiz.questionCount || (quiz.questions?.length || 0)} Questions</span>
-                <span><i class="fas fa-clock"></i> ${quiz.duration || 30} mins</span>
-            </div>
-
-            <div class="student-quiz-actions">
-                <button class="btn-start-quiz" onclick="dashboard.startQuiz('${quiz._id}')">
-                    Start Quiz
-                </button>
-            </div>
-
-        </div>
-    `).join('');
+        `;
+        }).join('');
     }
 
 
@@ -328,51 +416,94 @@ class StudentDashboard {
     showQuizModal(quiz) {
         const modal = document.getElementById('quizModal');
         const title = document.getElementById('quizTitle');
-        const subject = document.getElementById('quizSubject');
-        const duration = document.getElementById('quizDuration');
+        const subjectEl = document.getElementById('quizSubject');
         const container = document.getElementById('questionsContainer');
 
-        title.textContent = quiz.title;
-        subject.textContent = quiz.subject;
-        duration.textContent = quiz.duration || 30;
+        title.textContent = quiz.title || 'Quiz';
+        subjectEl.textContent = `${(quiz.subject || 'General').toUpperCase()}`;
 
-        // Render questions
-        container.innerHTML = quiz.questions.map((question, index) => `
-            <div class="question-item">
-                <div class="question-text">Question ${index + 1}: ${question.question}</div>
+        // Render all question panels (hidden by default, show one at a time)
+        const optionLetters = ['A', 'B', 'C', 'D'];
+        container.innerHTML = (quiz.questions || []).map((question, index) => `
+            <div class="question-panel" data-question-index="${index}" style="display: none;">
+                <div class="question-text-large">${index + 1}. ${question.question}</div>
                 <div class="options-grid">
-                    ${question.options.map((option, optionIndex) => `
-                        <label class="option-label">
+                    ${(question.options || []).map((option, optionIndex) => `
+                        <label class="option-card">
                             <input type="radio" name="question${index}" value="${optionIndex}">
-                            <span>${option}</span>
+                            <span>${optionLetters[optionIndex] || String.fromCharCode(65 + optionIndex)}. ${option}</span>
                         </label>
                     `).join('')}
                 </div>
             </div>
         `).join('');
 
+        this.currentQuestionIndex = 0;
+        this.showQuestion(0);
+        this.updateQuestionProgress();
         modal.classList.add('active');
+
+        container.addEventListener('change', () => this.updateQuestionProgress());
         this.startQuizTimer((quiz.duration || 30) * 60);
+    }
+
+    showQuestion(index) {
+        const questions = this.currentQuiz?.questions || [];
+        const total = questions.length;
+        if (total === 0) return;
+        this.currentQuestionIndex = Math.max(0, Math.min(index, total - 1));
+
+        document.querySelectorAll('#questionsContainer .question-panel').forEach((panel, i) => {
+            panel.style.display = i === this.currentQuestionIndex ? 'block' : 'none';
+        });
+
+        const prevBtn = document.getElementById('quizPrevBtn');
+        const nextBtn = document.getElementById('quizNextBtn');
+        const submitBtn = document.querySelector('.btn-quiz-submit');
+        if (prevBtn) prevBtn.disabled = this.currentQuestionIndex === 0;
+        if (nextBtn) nextBtn.style.display = this.currentQuestionIndex === total - 1 ? 'none' : 'inline-flex';
+        if (submitBtn) submitBtn.style.display = this.currentQuestionIndex === total - 1 ? 'inline-flex' : 'none';
+        this.updateQuestionProgress();
+    }
+
+    updateQuestionProgress() {
+        const el = document.getElementById('questionProgress');
+        if (!el || !this.currentQuiz) return;
+        const questions = this.currentQuiz.questions || [];
+        const total = questions.length;
+        let answered = 0;
+        for (let i = 0; i < total; i++) {
+            if (document.querySelector(`input[name="question${i}"]:checked`)) answered++;
+        }
+        el.textContent = `Question ${this.currentQuestionIndex + 1} of ${total} (${answered} answered)`;
     }
 
     startQuizTimer(durationSeconds) {
         let timeRemaining = durationSeconds;
         const timerElement = document.getElementById('timeRemaining');
+        const warningAlert = document.getElementById('quizTimeWarningAlert');
+        let oneMinShown = false;
 
         this.quizTimer = setInterval(() => {
             const minutes = Math.floor(timeRemaining / 60);
             const seconds = timeRemaining % 60;
             timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
+            if (timeRemaining <= 60 && !oneMinShown) {
+                oneMinShown = true;
+                if (warningAlert) warningAlert.style.display = 'flex';
+            }
+
             if (timeRemaining <= 0) {
                 clearInterval(this.quizTimer);
-                this.submitQuiz();
+                this.quizTimer = null;
+                this.submitQuiz(true);
             }
             timeRemaining--;
         }, 1000);
     }
 
-    async submitQuiz() {
+    async submitQuiz(isAutoSubmit = false) {
         if (!this.currentQuiz) return;
 
         try {
@@ -381,16 +512,16 @@ class StudentDashboard {
 
             for (let i = 0; i < questions.length; i++) {
                 const selectedOption = document.querySelector(`input[name="question${i}"]:checked`);
-
-                if (!selectedOption) {
-                    this.showMessage(`Please attempt Question ${i + 1}`, 'error');
-                    return;
+                if (selectedOption) {
+                    answers.push(Number(selectedOption.value));
+                } else {
+                    if (isAutoSubmit) {
+                        answers.push(-1);
+                    } else {
+                        this.showMessage(`Please attempt Question ${i + 1}`, 'error');
+                        return;
+                    }
                 }
-
-                // ✅ Send only option index (same like your old code + Postman style)
-                const optionIndex = Number(selectedOption.value);
-                const optionMap = ["a", "b", "c", "d"];
-                answers.push(optionMap[optionIndex]);
             }
 
             console.log("✅ FINAL ANSWERS ARRAY:", answers);
@@ -431,7 +562,24 @@ class StudentDashboard {
             this.quizTimer = null;
         }
 
+        const warningAlert = document.getElementById('quizTimeWarningAlert');
+        if (warningAlert) warningAlert.style.display = 'none';
         this.currentQuiz = null;
+    }
+
+    showQuizResultModal(result) {
+        const modal = document.getElementById('quizResultModal');
+        if (!modal) return;
+        document.getElementById('quizResultTitle').textContent = result.title || 'Quiz Result';
+        document.getElementById('quizResultScore').textContent = `${result.obtainedMarks} / ${result.totalMarks}`;
+        const pct = result.totalMarks > 0 ? ((result.obtainedMarks / result.totalMarks) * 100).toFixed(1) : '0';
+        document.getElementById('quizResultPercentage').textContent = `${pct}%`;
+        document.getElementById('quizResultTime').textContent = result.submissionTime || '—';
+        modal.classList.add('active');
+    }
+
+    closeQuizResultModal() {
+        document.getElementById('quizResultModal')?.classList.remove('active');
     }
 
     updateProfilePage() {
@@ -468,12 +616,15 @@ class StudentDashboard {
         }
 
         tbody.innerHTML = marks.map(mark => {
-            const percentage = mark.total > 0 ? ((mark.score / mark.total) * 100).toFixed(1) : 0;
+            const obtainedMarks = mark.marks || 0;
+            const totalMarks = mark.total || 0;
+            const percentage = totalMarks > 0 ? ((obtainedMarks / totalMarks) * 100).toFixed(1) : 0;
+            
             return `
                 <tr>
                     <td>${mark.subject}</td>
-                    <td>${mark.score}</td>
-                    <td>${mark.total}</td>
+                    <td>${obtainedMarks}</td>
+                    <td>${totalMarks}</td>
                     <td>${percentage}%</td>
                     <td>${new Date(mark.createdAt).toLocaleDateString()}</td>
                 </tr>
@@ -572,23 +723,14 @@ class StudentDashboard {
         const studentTimezone = meta.studentTimezone || "Asia/Kolkata";
 
         container.innerHTML = `
-        <div class="session-list-container">
-            <div class="session-list-header">
-                <h3>Session List</h3>
-                <div class="session-list-info">
-                    <span>${availableSessions.length} Total Sessions</span>
-                </div>
-            </div>
-            <div class="sessions-list">
-                <div class="sessions-grid">
-                    ${availableSessions.map(session => this.createSessionCard(session)).join("")}
-                </div>
-            </div>
-        </div>`;
+            <div class="sessions-grid">
+                ${availableSessions.map(session => this.createSessionCard(session)).join("")}
+            </div>`;
 
         // Add event listeners for slot interactions
         container.querySelectorAll(".slot-item.available").forEach(chip => {
-            chip.addEventListener("click", async () => {
+            chip.addEventListener("click", async (e) => {
+                e.stopPropagation(); // Prevent card click when clicking slot
                 const sessionId = chip.dataset.sessionId;
                 const startTimeUTC = chip.dataset.startUtc;
                 const endTimeUTC = chip.dataset.endUtc;
@@ -609,45 +751,40 @@ class StudentDashboard {
             existingModal.remove();
         }
 
-        // Create modal element
         const modal = document.createElement('div');
         modal.id = 'bookingModal';
         modal.className = 'booking-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
         modal.innerHTML = `
             <div class="booking-modal-overlay">
                 <div class="booking-modal-content">
-                    <div class="booking-modal-header">
+                    <header class="booking-modal-header">
                         <h3>Book Session Slot</h3>
-                        <button class="booking-modal-close" onclick="this.closest('.booking-modal').remove()">
+                        <button type="button" class="booking-modal-close" aria-label="Close">
                             <i class="fas fa-times"></i>
                         </button>
-                    </div>
-                    
+                    </header>
                     <div class="booking-modal-body">
                         <div class="booking-details">
                             <div class="detail-item">
-                                <span class="detail-label">Session:</span>
+                                <span class="detail-label">Session</span>
                                 <span class="detail-value">${title}</span>
                             </div>
                             <div class="detail-item">
-                                <span class="detail-label">Date:</span>
+                                <span class="detail-label">Date</span>
                                 <span class="detail-value">${date}</span>
                             </div>
                             <div class="detail-item">
-                                <span class="detail-label">Time:</span>
-                                <span class="detail-value">${startTime} - ${endTime}</span>
+                                <span class="detail-label">Time</span>
+                                <span class="detail-value">${startTime} – ${endTime}</span>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="booking-modal-actions">
-                        <button class="booking-btn booking-btn-cancel" onclick="this.closest('.booking-modal').remove()">
-                            Cancel
-                        </button>
-                        <button class="booking-btn booking-btn-confirm" id="confirmBookingBtn">
-                            Confirm Booking
-                        </button>
-                    </div>
+                    <footer class="booking-modal-actions">
+                        <button type="button" class="booking-btn booking-btn-cancel">Cancel</button>
+                        <button type="button" class="booking-btn booking-btn-confirm" id="confirmBookingBtn">Confirm Booking</button>
+                    </footer>
                 </div>
             </div>
         `;
@@ -655,33 +792,27 @@ class StudentDashboard {
         document.body.appendChild(modal);
         document.body.style.overflow = 'hidden';
 
-        // Add event listener for confirm button
+        const removeModal = () => {
+            modal.remove();
+            document.body.style.overflow = '';
+        };
+
+        modal.querySelector('.booking-modal-close').addEventListener('click', removeModal);
+        modal.querySelector('.booking-btn-cancel').addEventListener('click', removeModal);
         document.getElementById('confirmBookingBtn').addEventListener('click', async () => {
             const chip = document.querySelector(`.slot-item[data-session-id="${sessionId}"][data-start-utc="${startTimeUTC}"]`);
-            
-            if (chip) {
-                chip.classList.add('booked');
-            }
-
+            if (chip) chip.classList.add('booked');
             try {
                 await this.bookSession(sessionId, startTimeUTC, endTimeUTC);
-                modal.remove();
-                document.body.style.overflow = '';
+                removeModal();
                 await this.loadSessions();
             } catch (err) {
-                if (chip) {
-                    chip.classList.remove('booked');
-                }
+                if (chip) chip.classList.remove('booked');
                 this.showMessage(err.message, 'error');
             }
         });
-
-        // Close modal when clicking overlay
         modal.querySelector('.booking-modal-overlay').addEventListener('click', (e) => {
-            if (e.target === modal.querySelector('.booking-modal-overlay')) {
-                modal.remove();
-                document.body.style.overflow = '';
-            }
+            if (e.target === modal.querySelector('.booking-modal-overlay')) removeModal();
         });
     }
 
@@ -886,38 +1017,35 @@ class StudentDashboard {
         modal.className = "booking-confirmation-modal";
 
         modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-calendar-check"></i> Confirm Booking</h3>
-                <button class="modal-close" id="closeBookingModal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <div class="modal-body">
-                <p>Are you sure you want to book this session?</p>
-
-                <div class="booking-details">
-                    <div class="detail-row">
-                        <span class="label">Session:</span>
-                        <span class="value">${title}</span>
-                    </div>
-
-                    <div class="detail-row">
-                        <span class="label">Date:</span>
-                        <span class="value">${date}</span>
-                    </div>
-
-                    <div class="detail-row">
-                        <span class="label">Time:</span>
-                        <span class="value">${startTime} - ${endTime}</span>
+        <div class="booking-confirmation-overlay">
+            <div class="booking-confirmation-content">
+                <header class="booking-confirmation-header">
+                    <h3><i class="fas fa-calendar-check"></i> Confirm Booking</h3>
+                    <button type="button" class="booking-confirmation-close" id="closeBookingModal" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </header>
+                <div class="booking-confirmation-body">
+                    <p class="booking-confirmation-message">Are you sure you want to book this session?</p>
+                    <div class="booking-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Session</span>
+                            <span class="detail-value">${title}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Date</span>
+                            <span class="detail-value">${date}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Time</span>
+                            <span class="detail-value">${startTime} – ${endTime}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="modal-footer">
-                <button class="btn btn-outline" id="cancelBookingBtn">Cancel</button>
-                <button class="btn btn-primary" id="confirmBookingBtn">Confirm Booking</button>
+                <footer class="booking-confirmation-footer">
+                    <button type="button" class="booking-btn booking-btn-cancel" id="cancelBookingBtn">Cancel</button>
+                    <button type="button" class="booking-btn booking-btn-confirm" id="confirmBookingBtn">Confirm Booking</button>
+                </footer>
             </div>
         </div>
     `;

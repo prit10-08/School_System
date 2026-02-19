@@ -401,7 +401,42 @@ body:has(#login-form) .login-link p {
     color: #dc3545;
     margin-top: 4px;
     min-height: 16px;
-    display: block;
+    display: none;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* Form Field States */
+.form-field input.error,
+.form-field select.error {
+    border-color: #dc3545;
+    background-color: #fef2f2;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+.form-field input.success,
+.form-field select.success {
+    border-color: #28a745;
+    background-color: #f0fdf4;
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
+}
+
+.form-field input:focus,
+.form-field select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Password wrapper error state */
+.password-input-wrapper.error input {
+    border-color: #dc3545;
+    background-color: #fef2f2;
+}
+
+.password-input-wrapper.success input {
+    border-color: #28a745;
+    background-color: #f0fdf4;
 }
 
 /* Buttons */

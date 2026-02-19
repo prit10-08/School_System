@@ -1,5 +1,6 @@
 const Quiz = require("../models/Quiz");
 const User = require("../models/User");
+const Mark = require("../models/Mark");
 
 exports.createQuiz = async (req, res) => {
   try {
@@ -125,6 +126,19 @@ exports.updateQuiz = async (req, res) => {
       });
     }
 
+    // Server-side validation: Check if published quiz can be edited
+    if (quiz.status === 'published') {
+      const now = new Date();
+      const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+      
+      if (startTime && startTime <= now) {
+        return res.status(403).json({
+          success: false,
+          message: "Cannot edit published quiz after start time"
+        });
+      }
+    }
+
     const { 
       title, 
       subject, 
@@ -197,6 +211,19 @@ exports.updateQuizQuestion = async (req, res) => {
       return res.status(404).json({ message: "Quiz not found" });
     }
 
+    // Server-side validation: Check if published quiz can be edited
+    if (quiz.status === 'published') {
+      const now = new Date();
+      const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+      
+      if (startTime && startTime <= now) {
+        return res.status(403).json({
+          success: false,
+          message: "Cannot edit published quiz after start time"
+        });
+      }
+    }
+
     const ques = quiz.questions.id(questionId);
 
     if (!ques) {
@@ -246,6 +273,7 @@ exports.deleteQuiz = async (req, res) => {
   }
 };
 
+
 exports.getAvailableQuizzes = async (req, res) => {
   try {
     const student = await User.findById(req.user.id).select("teacherId class");
@@ -264,32 +292,62 @@ exports.getAvailableQuizzes = async (req, res) => {
       });
     }
 
-    const quizzes = await Quiz.find({
+    // Fetch quizzes only for the student's class and teacher (filter by class so students cannot see other class quizzes)
+    const query = {
       teacherId: student.teacherId,
-      class: student.class,
-      status: { $ne: "draft" }  
-    })
+      status: { $ne: "draft" }
+    };
+    if (student.class) {
+      query.class = student.class;
+    }
+    const quizzes = await Quiz.find(query)
       .select("-__v -questions.correctOption")
       .sort({ createdAt: -1 });
 
-    const quizzesWithDetails = quizzes.map((quiz) => ({
-      _id: quiz._id,
-      title: quiz.title,
-      subject: quiz.subject,
-      description: quiz.description || `Test your knowledge in ${quiz.subject}`,
-      duration: quiz.duration || 30,
-      questionCount: quiz.questions ? quiz.questions.length : 0,
+    const quizIds = quizzes.map((q) => q._id);
+    const submittedMarks = await Mark.find({
+      student_id: req.user.id,
+      quizId: { $in: quizIds }
+    })
+      .select("quizId marks totalMarks submissionTime")
+      .lean();
 
-      totalMarks: quiz.totalMarks || (quiz.questions ? quiz.questions.length : 0),
+    const markByQuizId = {};
+    submittedMarks.forEach((m) => {
+      markByQuizId[m.quizId.toString()] = m;
+    });
 
-      createdAt: quiz.createdAt
-    }));
+    const quizzesWithDetails = quizzes.map((quiz) => {
+      const quizIdStr = quiz._id.toString();
+      const submission = markByQuizId[quizIdStr];
+      const alreadySubmitted = !!submission;
+
+      return {
+        _id: quiz._id,
+        title: quiz.title || 'Untitled Quiz',
+        subject: quiz.subject || 'General Knowledge',
+        class: quiz.class || student.class || 'Not Assigned',
+        description: quiz.description || `Test your knowledge in ${quiz.subject || 'this subject'}`,
+        duration: quiz.duration || 30,
+        startTime: quiz.startTime,
+        endTime: quiz.endTime,
+        status: quiz.status === 'published' ? 'ACTIVE' : 'DRAFT',
+        questionCount: quiz.questions ? quiz.questions.length : 0,
+        totalMarks: quiz.totalMarks || (quiz.questions ? quiz.questions.length : 0),
+        createdAt: quiz.createdAt,
+        alreadySubmitted,
+        ...(alreadySubmitted && {
+          obtainedMarks: submission.marks,
+          submissionTotalMarks: submission.totalMarks,
+          submissionTime: submission.submissionTime
+        })
+      };
+    });
 
     res.json({
       success: true,
       data: quizzesWithDetails
     });
-
   } catch (err) {
     console.error("Error getting available quizzes:", err);
     res.status(500).json({ success: false, message: "Server error" });
