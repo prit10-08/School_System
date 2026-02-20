@@ -597,90 +597,94 @@ exports.getQuizAttempts = async (req, res) => {
     const { quizId } = req.params;
     const teacherId = req.user.id;
 
-    // Verify the quiz belongs to this teacher
-    const Quiz = require("../models/Quiz");
-    const quiz = await Quiz.findOne({ _id: quizId, teacherId }).select("class totalMarks");
-    
-    if (!quiz) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Quiz not found or you don't have permission to view it" 
+    if (!quizId || !mongoose.Types.ObjectId.isValid(quizId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid quiz ID"
       });
     }
 
-    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const quiz = await Quiz.findOne({
+      _id: quizId,
+      teacherId: teacherId
+    }).select('title subject class totalMarks');
 
-    // Include all assigned students (teacher's students, scoped to quiz class if present)
-    const baseAssignedQuery = { teacherId, role: "student" };
-    const className = (quiz.class || "").trim();
-
-    let assignedStudentsQuery = { ...baseAssignedQuery };
-    if (className) {
-      // tolerate casing / extra spaces (common data issue)
-      assignedStudentsQuery.class = new RegExp(`^\\s*${escapeRegex(className)}\\s*$`, "i");
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        message: 'Quiz not found'
+      });
     }
 
-    let assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
+    // Students assigned to this quiz = same teacher and same class
+    const assignedStudents = await User.find({
+      role: 'student',
+      teacherId: teacherId,
+      class: quiz.class
+    }).select('_id name class').lean();
 
-    // Fallback: if class filter yields none, show all teacher students (prevents 0/0/0 UI)
-    if (assignedStudents.length === 0 && className) {
-      assignedStudentsQuery = { ...baseAssignedQuery };
-      assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
-    }
+    const studentIds = assignedStudents.map(s => s._id);
 
-    const assignedStudentIds = assignedStudents.map((s) => s._id);
+    const attempts = await Mark.find({
+      quizId: quizId,
+      student_id: { $in: studentIds }
+    }).lean();
 
-    // Latest submission per student counts as "Attempted"
-    const marks = await Mark.find({
-      quizId,
-      teacherId,
-      student_id: { $in: assignedStudentIds }
-    })
-      .populate("student_id", "name")
-      .sort({ submissionTime: -1 })
-      .lean();
+    const attemptedSet = new Set(attempts.map(a => a.student_id.toString()));
+    const attemptByStudent = {};
+    attempts.forEach(a => {
+      attemptByStudent[a.student_id.toString()] = {
+        score: a.marks,
+        totalMarks: a.totalMarks,
+        attemptedAt: a.submissionTime
+      };
+    });
 
-    const latestAttemptByStudentId = new Map();
-    for (const m of marks) {
-      const sid = m?.student_id?._id?.toString();
-      if (!sid) continue;
-      if (!latestAttemptByStudentId.has(sid)) {
-        latestAttemptByStudentId.set(sid, m);
-      }
-    }
+    const attempted = [];
+    const notAttempted = [];
 
-    const attemptedStudents = Array.from(latestAttemptByStudentId.values()).map((m) => ({
-      id: m.student_id._id,
-      name: m.student_id.name,
-      score: m.marks ?? 0,
-      totalMarks: m.totalMarks ?? quiz.totalMarks ?? 0,
-      attemptTime: m.submissionTime
-    }));
-
-    const attemptedIdSet = new Set(attemptedStudents.map((s) => s.id.toString()));
-
-    const notAttemptedStudents = assignedStudents
-      .filter((s) => !attemptedIdSet.has(s._id.toString()))
-      .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }))
-      .map((s) => ({ id: s._id, name: s.name }));
-
-    const totalStudents = assignedStudents.length;
-    const attemptedCount = attemptedStudents.length;
-    const notAttemptedCount = notAttemptedStudents.length;
-
-    return res.json({
-      success: true,
-      data: {
-        totalStudents,
-        attemptedCount,
-        notAttemptedCount,
-        attemptedStudents, // sorted by latest attempt due to query sort + first-seen grouping
-        notAttemptedStudents
+    assignedStudents.forEach(student => {
+      const idStr = student._id.toString();
+      const record = {
+        studentId: student._id,
+        name: student.name,
+        class: student.class || "Not Assigned"
+      };
+      if (attemptedSet.has(idStr)) {
+        const a = attemptByStudent[idStr];
+        attempted.push({
+          ...record,
+          score: a.score,
+          totalMarks: a.totalMarks,
+          attemptedAt: a.attemptedAt
+        });
+      } else {
+        notAttempted.push(record);
       }
     });
 
+    // Sort attempted by attemptedAt desc (most recent first)
+    attempted.sort((a, b) => new Date(b.attemptedAt) - new Date(a.attemptedAt));
+
+    res.json({
+      success: true,
+      quiz: {
+        _id: quiz._id,
+        title: quiz.title,
+        subject: quiz.subject,
+        class: quiz.class,
+        totalMarks: quiz.totalMarks
+      },
+      totalStudents: assignedStudents.length,
+      attemptedCount: attempted.length,
+      notAttemptedCount: notAttempted.length,
+      attempted,
+      notAttempted
+    });
   } catch (err) {
-    console.error("Error fetching quiz attempts:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };

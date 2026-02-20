@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/node": "^25.3.0",
     "nodemon": "^3.1.11"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "jsonwebtoken": "^9.0.3",
     "mailgun.js": "^12.7.0",
     "moment-timezone": "^0.6.0",
+    "mongodb": "^7.1.0",
     "mongoose": "^9.0.1",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.12",

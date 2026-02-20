@@ -70,12 +70,20 @@ class TeacherDashboard {
     waitForComponentsAndInit() {
         // Check if components are already loaded
         if (document.querySelector('.nav-item') && document.querySelector('.profile-dropdown')) {
+            // Initialize button states - hide Edit button by default
+            const updateDraftBtn = document.getElementById('updateDraftBtn');
+            if (updateDraftBtn) updateDraftBtn.style.display = 'none';
+            
             this.setupEventListeners();
             this.loadTeacherProfile();
             this.loadDashboardData();
         } else {
             // Wait for components to load
             document.addEventListener('componentsLoaded', () => {
+                // Initialize button states - hide Edit button by default
+                const updateDraftBtn = document.getElementById('updateDraftBtn');
+                if (updateDraftBtn) updateDraftBtn.style.display = 'none';
+                
                 this.setupEventListeners();
                 this.loadTeacherProfile();
                 this.loadDashboardData();
@@ -290,8 +298,12 @@ class TeacherDashboard {
 
                 // Ensure bottom action buttons are visible for new creations
                 const saveDraftBtn = document.getElementById('saveDraftBtn');
+                const updateDraftBtn = document.getElementById('updateDraftBtn');
                 const publishBtn = document.getElementById('publishQuizBtn');
+                
+                // Hide Edit/Update button for new quiz creation - only show creation actions
                 if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+                if (updateDraftBtn) updateDraftBtn.style.display = 'none';
                 if (publishBtn) publishBtn.style.display = 'inline-block';
             }
 
@@ -349,6 +361,15 @@ class TeacherDashboard {
                     container.innerHTML = '';
                     this.addQuizQuestion();
                 }
+                
+                // Reset button states to default (creation mode)
+                const saveDraftBtn = document.getElementById('saveDraftBtn');
+                const updateDraftBtn = document.getElementById('updateDraftBtn');
+                const publishBtn = document.getElementById('publishQuizBtn');
+                
+                if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+                if (updateDraftBtn) updateDraftBtn.style.display = 'none';
+                if (publishBtn) publishBtn.style.display = 'inline-block';
             }
         });
 
@@ -378,6 +399,15 @@ class TeacherDashboard {
                     container.innerHTML = '';
                     this.addQuizQuestion();
                 }
+                
+                // Reset button states to default (creation mode)
+                const saveDraftBtn = document.getElementById('saveDraftBtn');
+                const updateDraftBtn = document.getElementById('updateDraftBtn');
+                const publishBtn = document.getElementById('publishQuizBtn');
+                
+                if (saveDraftBtn) saveDraftBtn.style.display = 'inline-block';
+                if (updateDraftBtn) updateDraftBtn.style.display = 'none';
+                if (publishBtn) publishBtn.style.display = 'inline-block';
             }
         });
 
@@ -1825,6 +1855,15 @@ async confirmPublishFromPreview() {
         }
     }
 
+    // Helper function to check if current quiz being edited is a draft
+    isCurrentQuizDraft() {
+        const quizId = document.getElementById('quizId').value;
+        if (!quizId || !this.currentQuizzes) return false;
+        
+        const currentQuiz = this.currentQuizzes.find(q => q._id === quizId);
+        return currentQuiz && currentQuiz.status === 'draft';
+    }
+
     validateQuizForm(form) {
         let isValid = true;
         this.clearFormValidation(form);
@@ -1862,6 +1901,26 @@ async confirmPublishFromPreview() {
         } else if (startTime.value && new Date(startTime.value) >= new Date(endTime.value)) {
             this.showFieldError('quizEndTime', 'End Time must be after Start Time');
             isValid = false;
+        }
+
+        // Check if this is a draft quiz and validate dates are not in the past
+        const quizId = document.getElementById('quizId').value;
+        const isDraftMode = !quizId; // No quizId means creating new draft
+        
+        if (isDraftMode || (quizId && this.isCurrentQuizDraft())) {
+            const now = new Date();
+            const startDate = startTime.value ? new Date(startTime.value) : null;
+            const endDate = endTime.value ? new Date(endTime.value) : null;
+            
+            if (startDate && startDate < now) {
+                this.showFieldError('quizStartTime', 'Start Time cannot be in the past for draft quizzes. Please choose a future date.');
+                isValid = false;
+            }
+            
+            if (endDate && endDate < now) {
+                this.showFieldError('quizEndTime', 'End Time cannot be in the past for draft quizzes. Please choose a future date.');
+                isValid = false;
+            }
         }
 
         const duration = form.querySelector('#quizDuration');
@@ -5935,11 +5994,32 @@ async confirmPublishFromPreview() {
         const attemptedFiltered = attemptedStudents.filter((s) => (s.name || '').toLowerCase().includes(q));
         const notAttemptedFiltered = notAttemptedStudents.filter((s) => (s.name || '').toLowerCase().includes(q));
 
-        // Filter behavior
+        // If no assigned students, show only summary with zeros and hide student lists
+        if ((totalStudents ?? 0) === 0) {
+            // Hide both student sections completely
+            const attemptedSection = document.getElementById('qdAttemptedSection');
+            const notAttemptedSection = document.getElementById('qdNotAttemptedSection');
+            if (attemptedSection) attemptedSection.style.display = 'none';
+            if (notAttemptedSection) notAttemptedSection.style.display = 'none';
+
+            // Hide section badges since there are no sections
+            const attemptedBadge = document.getElementById('qdAttemptedBadge');
+            const notAttemptedBadge = document.getElementById('qdNotAttemptedBadge');
+            if (attemptedBadge) attemptedBadge.style.display = 'none';
+            if (notAttemptedBadge) notAttemptedBadge.style.display = 'none';
+
+            return;
+        }
+
+        // Only show Attempted section if there are attempted students
         const attemptedSection = document.getElementById('qdAttemptedSection');
         const notAttemptedSection = document.getElementById('qdNotAttemptedSection');
-        const showAttempted = state.filter === 'all' || state.filter === 'attempted';
-        const showNotAttempted = state.filter === 'all' || state.filter === 'notAttempted';
+        
+        // Show attempted section only if there are attempted students
+        const showAttempted = (state.filter === 'all' || state.filter === 'attempted') && attemptedFiltered.length > 0;
+        // Show not attempted section only if there are not attempted students and total students > 0
+        const showNotAttempted = (state.filter === 'all' || state.filter === 'notAttempted') && notAttemptedFiltered.length > 0 && (totalStudents ?? 0) > 0;
+        
         if (attemptedSection) attemptedSection.style.display = showAttempted ? 'block' : 'none';
         if (notAttemptedSection) notAttemptedSection.style.display = showNotAttempted ? 'block' : 'none';
 
@@ -5947,40 +6027,22 @@ async confirmPublishFromPreview() {
         document.getElementById('qdAttemptedBadge').textContent = attemptedFiltered.length;
         document.getElementById('qdNotAttemptedBadge').textContent = notAttemptedFiltered.length;
 
-        // Attempted table + mobile cards
+        // Show badges when there are students
+        const attemptedBadge = document.getElementById('qdAttemptedBadge');
+        const notAttemptedBadge = document.getElementById('qdNotAttemptedBadge');
+        if (attemptedBadge) attemptedBadge.style.display = 'inline-block';
+        if (notAttemptedBadge) notAttemptedBadge.style.display = 'inline-block';
+
+        // Get DOM elements for attempted section
         const attemptedTbody = document.getElementById('qdAttemptedTbody');
         const attemptedCards = document.getElementById('qdAttemptedCards');
-
-        // If no assigned students, show a friendly empty state (prevents "all attempted" confusion)
-        if ((totalStudents ?? 0) === 0) {
-            const emptyAssigned = `
-                <div class="qd-empty-state">
-                    <div class="qd-empty-title">No students assigned to this quiz</div>
-                    <div class="qd-empty-subtitle">Add students to your class to start tracking attempts.</div>
-                </div>
-            `;
-
-            if (attemptedTbody) {
-                attemptedTbody.innerHTML = `<tr><td colspan="5">${emptyAssigned}</td></tr>`;
-            }
-            if (attemptedCards) attemptedCards.innerHTML = emptyAssigned;
-
-            const notAttemptedTbody = document.getElementById('qdNotAttemptedTbody');
-            const notAttemptedCards = document.getElementById('qdNotAttemptedCards');
-            if (notAttemptedTbody) {
-                notAttemptedTbody.innerHTML = `<tr><td colspan="2">${emptyAssigned}</td></tr>`;
-            }
-            if (notAttemptedCards) notAttemptedCards.innerHTML = emptyAssigned;
-
-            return;
-        }
 
         if (attemptedFiltered.length === 0) {
             const emptyHtml = `
                 <tr>
                     <td colspan="5">
                         <div class="qd-empty-state">
-                            <div class="qd-empty-title">No attempts yet</div>
+                            <div class="qd-empty-title">0 Students Attempted</div>
                             <div class="qd-empty-subtitle">Students will appear here once they submit this quiz.</div>
                         </div>
                     </td>
@@ -5989,7 +6051,7 @@ async confirmPublishFromPreview() {
             if (attemptedTbody) attemptedTbody.innerHTML = emptyHtml;
             if (attemptedCards) attemptedCards.innerHTML = `
                 <div class="qd-empty-state">
-                    <div class="qd-empty-title">No attempts yet</div>
+                    <div class="qd-empty-title">0 Students Attempted</div>
                     <div class="qd-empty-subtitle">Students will appear here once they submit this quiz.</div>
                 </div>
             `;
