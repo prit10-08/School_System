@@ -1185,6 +1185,11 @@ body {
     color: #047857;
 }
 
+.quiz-status-badge.upcoming {
+    background: #fef3c7;
+    color: #d97706;
+}
+
 .btn-quiz-start {
     padding: 8px 24px;
     background: #3b82f6;
@@ -1222,6 +1227,17 @@ body {
     background: #f3f4f6;
     color: #9ca3af;
     border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: not-allowed;
+}
+
+.btn-quiz-upcoming {
+    padding: 8px 24px;
+    background: #fbbf24;
+    color: white;
+    border: 1px solid #f59e0b;
     border-radius: 8px;
     font-size: 14px;
     font-weight: 500;

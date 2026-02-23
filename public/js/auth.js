@@ -43,7 +43,7 @@ class AuthSystem {
         }
 
         // Mobile validation
-        document.querySelectorAll('input[name="mobileNo"]').forEach(input => {
+        document.querySelectorAll('input[name="mobileNumber"]').forEach(input => {
             input.addEventListener('input', () => {
                 input.value = input.value.replace(/\D/g, '').slice(0, 10);
                 this.validateField(input, 'mobile');
@@ -125,8 +125,7 @@ class AuthSystem {
                 else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) errorMsg = 'Invalid email format';
                 break;
             case 'mobile':
-                if (!value) errorMsg = 'Mobile number is required';
-                else if (!/^[0-9]{10}$/.test(value)) errorMsg = 'Must be 10 digits';
+                if (value && !/^[0-9]{10}$/.test(value)) errorMsg = 'Must be 10 digits';
                 break;
             case 'password':
                 if (!value) errorMsg = 'Password is required';
@@ -370,7 +369,8 @@ class AuthSystem {
             ['signup-timezone', 'required'],
             ['signup-city', 'required'],
             ['signup-state', 'required'],
-            ['signup-country', 'required']
+            ['signup-country', 'required'],
+            ['signup-mobileNumber', 'mobile']
         ];
 
         validations.forEach(([id, type]) => {

@@ -7,8 +7,13 @@ class StudentDashboard {
         this.token = localStorage.getItem('token');
         this.student = null;
         this.currentQuiz = null;
-        this.quizTimer = null;
         this.currentQuestionIndex = 0;
+        this.answers = {};
+        this.startTime = null;
+        this.timerInterval = null;
+        this.statusCheckInterval = null;
+        this.quizStartTime = null;
+        this.quizEndTime = null;
         this.init();
     }
 
@@ -105,6 +110,12 @@ class StudentDashboard {
         document.getElementById('closeQuizResultModal')?.addEventListener('click', () => {
             this.closeQuizResultModal();
         });
+
+        // Cleanup status monitoring on page unload
+        window.addEventListener('beforeunload', () => {
+            this.stopStatusMonitoring();
+            this.stopGlobalQuizMonitoring();
+        });
     }
 
     async apiRequest(url, options = {}) {
@@ -179,6 +190,9 @@ class StudentDashboard {
 
             // ✅ Recent Sessions = Available sessions ma thi last 2
             this.updateRecentSessions(sessionsStats.totalSessions);
+
+            // ✅ Start global real-time monitoring for all quizzes
+            this.startGlobalQuizMonitoring(quizzes);
 
         } catch (error) {
             this.showMessage('Error loading dashboard data: ' + error.message, 'error');
@@ -323,78 +337,7 @@ class StudentDashboard {
             countSubtitle.textContent = `${quizzes.length} available`;
         }
 
-        container.innerHTML = quizzes.map(quiz => {
-            const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
-            const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
-
-            const formatScheduleDateTime = (date) => {
-                if (!date) return 'Not set';
-                return date.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                }).replace(',', ',').replace(' at ', ', ');
-            };
-
-            const formattedStart = formatScheduleDateTime(startTime);
-            const formattedEnd = formatScheduleDateTime(endTime);
-            const duration = quiz.duration ? `${quiz.duration} min` : 'Not set';
-            const questionCount = quiz.questionCount ?? (quiz.questions?.length ?? 0);
-
-            const alreadySubmitted = !!quiz.alreadySubmitted;
-            const isExpired = !alreadySubmitted && endTime && endTime < now;
-            const statusClass = alreadySubmitted ? 'completed' : (isExpired ? 'expired' : 'active');
-            const statusText = alreadySubmitted ? 'COMPLETED' : (isExpired ? 'EXPIRED' : 'ACTIVE');
-
-            const subjectDisplay = (quiz.subject || 'General').toUpperCase();
-            const classDisplay = `Class ${quiz.class || 'N/A'}`;
-
-            let actionButton;
-            if (alreadySubmitted) {
-                const ob = quiz.obtainedMarks ?? 0;
-                const tot = quiz.submissionTotalMarks ?? quiz.totalMarks ?? 0;
-                const subTime = quiz.submissionTime ? new Date(quiz.submissionTime).toLocaleString() : '';
-                actionButton = `<button class="btn-quiz-view-result" data-quiz-id="${quiz._id}" data-title="${(quiz.title || 'Quiz').replace(/"/g, '&quot;')}" data-obtained="${ob}" data-total="${tot}" data-time="${String(subTime).replace(/"/g, '&quot;')}">View Result</button>`;
-            } else if (isExpired) {
-                actionButton = '<button class="btn-quiz-locked" disabled>Locked</button>';
-            } else {
-                actionButton = `<button class="btn-quiz-start" onclick="dashboard.startQuiz('${quiz._id}')">Start</button>`;
-            }
-
-            return `
-            <div class="quiz-row-card" data-quiz-item-id="${quiz._id}">
-                <div class="quiz-row-title-section">
-                    <h3 class="quiz-row-title">${quiz.title || 'Quiz'}</h3>
-                    <p class="quiz-row-subtitle">${subjectDisplay} • ${classDisplay}</p>
-                </div>
-                <div class="quiz-row-details">
-                    <div class="quiz-detail-col">
-                        <span class="quiz-detail-label">START</span>
-                        <span class="quiz-detail-value">${formattedStart}</span>
-                    </div>
-                    <div class="quiz-detail-col">
-                        <span class="quiz-detail-label">END</span>
-                        <span class="quiz-detail-value">${formattedEnd}</span>
-                    </div>
-                    <div class="quiz-detail-col">
-                        <span class="quiz-detail-label">DURATION</span>
-                        <span class="quiz-detail-value">${duration}</span>
-                    </div>
-                    <div class="quiz-detail-col">
-                        <span class="quiz-detail-label">QUESTIONS</span>
-                        <span class="quiz-detail-value">${questionCount}</span>
-                    </div>
-                </div>
-                <div class="quiz-row-actions">
-                    <span class="quiz-status-badge ${statusClass}">${statusText}</span>
-                    ${actionButton}
-                </div>
-            </div>
-        `;
-        }).join('');
+        container.innerHTML = quizzes.map(quiz => this.renderQuizCard(quiz)).join('');
     }
 
 
@@ -403,7 +346,35 @@ class StudentDashboard {
             this.showLoading();
 
             const response = await this.apiRequest(`${this.apiBaseUrl}/quiz/${quizId}`);
+            
+            // Handle time validation responses
+            if (response.status === 'upcoming') {
+                // Quiz hasn't started yet - no message needed
+                // Start monitoring for start time
+                this.startStatusMonitoring(quizId, new Date(response.startTime));
+                return;
+            }
+            
+            if (response.status === 'expired') {
+                // Quiz has expired - no message needed
+                return;
+            }
+
+            // Check if already attempted
+            if (response.alreadyAttempted) {
+                // Already attempted - keep this message as it's user-initiated
+                this.showMessage(`You already attempted this quiz on ${new Date(response.existingAttempt.attemptedAt).toLocaleString()}. Score: ${response.existingAttempt.score}/${response.existingAttempt.totalMarks}`, 'info');
+                return;
+            }
+
             this.currentQuiz = response.data || response;
+            
+            // Store quiz times for monitoring
+            this.quizStartTime = response.startTime ? new Date(response.startTime) : null;
+            this.quizEndTime = response.endTime ? new Date(response.endTime) : null;
+            
+            // Start monitoring for end time
+            this.startStatusMonitoring(quizId, this.quizEndTime);
 
             this.showQuizModal(this.currentQuiz);
         } catch (error) {
@@ -1123,6 +1094,198 @@ class StudentDashboard {
         setTimeout(() => {
             messageDiv.remove();
         }, 5000);
+    }
+
+    // Real-time status monitoring for quiz time windows
+    startGlobalQuizMonitoring(quizzes) {
+        // Stop any existing global monitoring
+        this.stopGlobalQuizMonitoring();
+
+        // Store quiz data for monitoring and initialize current status
+        this.monitoredQuizzes = quizzes.map(quiz => ({
+            ...quiz,
+            currentStatus: this.getCurrentQuizStatus(quiz)
+        }));
+
+        // Start continuous monitoring
+        this.globalStatusInterval = setInterval(() => {
+            this.updateAllQuizStatuses();
+        }, 1000); // Check every second
+    }
+
+    getCurrentQuizStatus(quiz) {
+        const now = new Date();
+        const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+        const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+        if (quiz.alreadySubmitted) {
+            return 'completed';
+        } else if (endTime && now > endTime) {
+            return 'expired';
+        } else if (startTime && now > startTime) {
+            return 'active';
+        } else if (startTime && now < startTime) {
+            return 'upcoming';
+        } else {
+            return 'active';
+        }
+    }
+
+    stopGlobalQuizMonitoring() {
+        if (this.globalStatusInterval) {
+            clearInterval(this.globalStatusInterval);
+            this.globalStatusInterval = null;
+        }
+    }
+
+    updateAllQuizStatuses() {
+        if (!this.monitoredQuizzes) return;
+
+        let hasUpdates = false;
+
+        this.monitoredQuizzes.forEach(quiz => {
+            const newStatus = this.getCurrentQuizStatus(quiz);
+            const oldStatus = quiz.currentStatus;
+
+            // Check if status changed
+            if (oldStatus !== newStatus) {
+                quiz.currentStatus = newStatus;
+                hasUpdates = true;
+                
+                // Update specific quiz card
+                this.updateQuizCardStatus(quiz._id);
+            }
+        });
+
+        // Re-render entire quiz list if there were updates
+        if (hasUpdates) {
+            this.updateQuizList(this.monitoredQuizzes);
+        }
+    }
+
+    startStatusMonitoring(quizId, targetTime) {
+        // Clear any existing monitoring
+        this.stopStatusMonitoring();
+
+        if (!targetTime) return;
+
+        const checkInterval = setInterval(async () => {
+            const now = new Date();
+            
+            if (now >= targetTime) {
+                this.stopStatusMonitoring();
+                
+                // Update the specific quiz card in the list
+                this.updateQuizCardStatus(quizId);
+                
+                // Show notification
+                if (targetTime === this.quizStartTime) {
+                    this.showMessage('Quiz has started! You can now attempt it.', 'success');
+                } else if (targetTime === this.quizEndTime) {
+                    this.showMessage('Quiz time has ended.', 'warning');
+                }
+            }
+        }, 1000); // Check every second
+
+        this.statusCheckInterval = checkInterval;
+    }
+
+    stopStatusMonitoring() {
+        if (this.statusCheckInterval) {
+            clearInterval(this.statusCheckInterval);
+            this.statusCheckInterval = null;
+        }
+    }
+
+    updateQuizCardStatus(quizId) {
+        const quizCard = document.querySelector(`[data-quiz-item-id="${quizId}"]`);
+        if (!quizCard) return;
+
+        // Find the quiz data from monitored quizzes
+        const quizData = this.monitoredQuizzes?.find(q => q._id === quizId);
+        if (!quizData) return;
+
+        // Re-render the card with updated status
+        const updatedCard = this.renderQuizCard(quizData);
+        quizCard.outerHTML = updatedCard;
+    }
+
+    // Extracted quiz card rendering logic for reuse
+    renderQuizCard(quiz) {
+        const now = new Date();
+        const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+        const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+        const formatScheduleDateTime = (date) => {
+            if (!date) return 'Not set';
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            }).replace(',', ',').replace(' at ', ', ');
+        };
+
+        const formattedStart = formatScheduleDateTime(startTime);
+        const formattedEnd = formatScheduleDateTime(endTime);
+        const duration = quiz.duration ? `${quiz.duration} min` : 'Not set';
+        const questionCount = quiz.questionCount ?? (quiz.questions?.length ?? 0);
+
+        const alreadySubmitted = !!quiz.alreadySubmitted;
+        const isExpired = !alreadySubmitted && endTime && endTime < now;
+        const isUpcoming = !alreadySubmitted && startTime && startTime > now;
+        const statusClass = alreadySubmitted ? 'completed' : (isExpired ? 'expired' : (isUpcoming ? 'upcoming' : 'active'));
+        const statusText = alreadySubmitted ? 'COMPLETED' : (isExpired ? 'EXPIRED' : (isUpcoming ? 'UPCOMING' : 'ACTIVE'));
+
+        const subjectDisplay = (quiz.subject || 'General').toUpperCase();
+        const classDisplay = `Class ${quiz.class || 'N/A'}`;
+
+        let actionButton;
+        if (alreadySubmitted) {
+            const ob = quiz.obtainedMarks ?? 0;
+            const tot = quiz.submissionTotalMarks ?? quiz.totalMarks ?? 0;
+            const subTime = quiz.submissionTime ? new Date(quiz.submissionTime).toLocaleString() : '';
+            actionButton = `<button class="btn-quiz-view-result" data-quiz-id="${quiz._id}" data-title="${(quiz.title || 'Quiz').replace(/"/g, '&quot;')}" data-obtained="${ob}" data-total="${tot}" data-time="${String(subTime).replace(/"/g, '&quot;')}">View Result</button>`;
+        } else if (isUpcoming) {
+            actionButton = '<button class="btn-quiz-upcoming" disabled>Upcoming</button>';
+        } else if (isExpired) {
+            actionButton = '<button class="btn-quiz-locked" disabled>Locked</button>';
+        } else {
+            actionButton = `<button class="btn-quiz-start" onclick="dashboard.startQuiz('${quiz._id}')">Start</button>`;
+        }
+
+        return `
+            <div class="quiz-row-card" data-quiz-item-id="${quiz._id}">
+                <div class="quiz-row-title-section">
+                    <h3 class="quiz-row-title">${quiz.title || 'Quiz'}</h3>
+                    <p class="quiz-row-subtitle">${subjectDisplay} • ${classDisplay}</p>
+                </div>
+                <div class="quiz-row-details">
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">START</span>
+                        <span class="quiz-detail-value">${formattedStart}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">END</span>
+                        <span class="quiz-detail-value">${formattedEnd}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">DURATION</span>
+                        <span class="quiz-detail-value">${duration}</span>
+                    </div>
+                    <div class="quiz-detail-col">
+                        <span class="quiz-detail-label">QUESTIONS</span>
+                        <span class="quiz-detail-value">${questionCount}</span>
+                    </div>
+                </div>
+                <div class="quiz-row-actions">
+                    <span class="quiz-status-badge ${statusClass}">${statusText}</span>
+                    ${actionButton}
+                </div>
+            </div>
+        `;
     }
 
     showLoading() {

@@ -55,8 +55,10 @@ const UserSchema = new mongoose.Schema(
     mobileNumber: { type: String, default: "" },
 
     teacherId: {
-      type: mongoose.Schema.Types.ObjectId,   
-      default: null
+      type: mongoose.Schema.Types.ObjectId,
+      required: function () {
+        return this.role === "student";
+      }
   },
   timezone: {
   type: String,

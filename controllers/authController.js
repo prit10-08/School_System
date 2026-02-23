@@ -5,7 +5,7 @@ const sendEmail = require("../utils/sendEmail");
 const emailTemplates = require("../config/emailTemplates");
 
 exports.signup = async (req, res) => {
-  const { userId, name, email, password, city, state, country, role } = req.body;
+  const { userId, name, email, password, city, state, country, role, mobileNumber, timezone } = req.body;
 
   // Only allow teacher signup
   if (role !== "teacher") {
@@ -38,13 +38,15 @@ exports.signup = async (req, res) => {
       city,
       state,
       country,
+      mobileNumber: mobileNumber || "",
+      timezone: timezone || "Asia/Kolkata",
       profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : ""
     });
 
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    setImmediate(async () => {
+    /*setImmediate(async () => {
       try {
         await sendEmail({
           to: email,
@@ -54,11 +56,11 @@ exports.signup = async (req, res) => {
       } catch (emailErr) {
         console.error("Failed to send welcome email:", emailErr.message);
       }
-    });
+    });*/
 
     return res.status(201).json({
       success: true,
-      message: "Teacher signup successful",
+      message: "Signup successful.",
       user: userResponse
     });
   } catch (err) {

@@ -15,6 +15,31 @@ exports.getQuizForStudent = async (req, res) => {
       return res.status(403).json({ message: "This quiz is not available yet" });
     }
 
+    // Time validation
+    const now = new Date();
+    const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+    const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+    // Check if quiz hasn't started yet
+    if (startTime && now < startTime) {
+      return res.status(403).json({ 
+        message: "Quiz has not started yet",
+        status: "upcoming",
+        startTime: startTime,
+        canStart: false
+      });
+    }
+
+    // Check if quiz has expired
+    if (endTime && now > endTime) {
+      return res.status(403).json({ 
+        message: "Quiz has expired",
+        status: "expired",
+        endTime: endTime,
+        canStart: false
+      });
+    }
+
     const student = await User.findOne({
       userId: req.user.userId,
       role: "student"
@@ -29,7 +54,24 @@ exports.getQuizForStudent = async (req, res) => {
         message: "You are not allowed to access this quiz"
       });
     }
-    res.json(quiz);
+
+    // Check if student already attempted this quiz
+    const existingAttempt = await Mark.findOne({
+      student_id: req.user.id,
+      quizId: quiz._id
+    });
+
+    res.json({
+      ...quiz.toObject(),
+      canStart: true,
+      status: "available",
+      alreadyAttempted: !!existingAttempt,
+      existingAttempt: existingAttempt ? {
+        score: existingAttempt.marks,
+        totalMarks: existingAttempt.totalMarks,
+        attemptedAt: existingAttempt.submissionTime
+      } : null
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -50,6 +92,27 @@ exports.submitQuiz = async (req, res) => {
       return res.status(403).json({ message: "This quiz is not available for submission" });
     }
 
+    // Time validation for submission
+    const now = new Date();
+    const startTime = quiz.startTime ? new Date(quiz.startTime) : null;
+    const endTime = quiz.endTime ? new Date(quiz.endTime) : null;
+
+    // Check if quiz hasn't started yet
+    if (startTime && now < startTime) {
+      return res.status(403).json({ 
+        message: "Quiz has not started yet",
+        status: "upcoming"
+      });
+    }
+
+    // Check if quiz has expired
+    if (endTime && now > endTime) {
+      return res.status(403).json({ 
+        message: "Quiz has expired",
+        status: "expired"
+      });
+    }
+
     const student = await User.findOne({
       _id: req.user.id,
       role: "student"
@@ -62,6 +125,20 @@ exports.submitQuiz = async (req, res) => {
     if (String(quiz.teacherId) !== String(student.teacherId)) {
       return res.status(403).json({
         message: "You are not allowed to submit this quiz"
+      });
+    }
+
+    // Check if student already attempted this quiz
+    const existingAttempt = await Mark.findOne({
+      student_id: req.user.id,
+      quizId: quiz._id
+    });
+
+    if (existingAttempt) {
+      return res.status(400).json({ 
+        message: "Quiz already submitted",
+        alreadyAttempted: true,
+        submissionTime: existingAttempt.submissionTime
       });
     }
 
@@ -87,16 +164,6 @@ exports.submitQuiz = async (req, res) => {
       });
     });
 
-    const exists = await Mark.findOne({
-      studentUserId: req.user.userId,
-      subject: quiz.subject,
-      student_id: req.user.id
-    });
-
-    if (exists) {
-      return res.status(400).json({ message: "Quiz already submitted" });
-    }
-
     await Mark.create({
       studentUserId: req.user.userId,
       subject: quiz.subject,
@@ -112,12 +179,11 @@ exports.submitQuiz = async (req, res) => {
       quizClass: quiz.class
     });
 
-
     res.json({
       message: "Quiz submitted successfully",
       totalMarks: quiz.totalMarks,
       obtainedMarks: score,
-      student_id:req.user.id
+      student_id: req.user.id
     });
 
   } catch (err) {
