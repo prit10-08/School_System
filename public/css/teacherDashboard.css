@@ -13,29 +13,31 @@
 
 /* Quiz Status Button Styles */
 .btn-status.draft {
-    background: #6b7280;
+    background: #f59e0b;
     color: white;
     border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     cursor: default;
+    box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
 }
 
 .btn-status.published {
-    background: #3b82f6;
+    background: #10b981;
     color: white;
     border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     cursor: default;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
 .draft-card-simple:hover {
@@ -725,20 +727,21 @@
 }
 
 .btn-status.published {
-    background: transparent;
-    color: #22c55e;
-    border: 1px solid #22c55e;
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 12px;
     font-size: 10px;
     font-weight: 600;
-    padding: 4px 8px;
-    border-radius: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     cursor: default;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
 .btn-status.published:hover {
-    background: #f0fdf4;
+    background: #059669;
 }
 
 .btn-status.expired {
@@ -2628,6 +2631,22 @@ select.error:focus {
     color: #94a3b8;
     display: block;
     margin-top: 4px;
+}
+
+/* Position status badge in top right corner of quiz item */
+.quiz-item-small {
+    position: relative !important;
+}
+
+.quiz-item-small .btn-status {
+    position: absolute !important;
+    top: 8px !important;
+    right: 8px !important;
+    margin: 0 !important;
+}
+
+.quiz-item-small .quiz-item-content {
+    padding-right: 80px; /* Make space for the badge */
 }
 
 /* Holiday Item Small (for dashboard) */

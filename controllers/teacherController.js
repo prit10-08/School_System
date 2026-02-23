@@ -3,6 +3,7 @@ const Mark = require("../models/Mark");
 const Quiz = require("../models/Quiz");
 const SessionSlot = require("../models/SessionSlot");
 const TeacherAvailability = require("../models/TeacherAvailability");
+const mongoose = require("mongoose");
 const fs = require("fs");
 const csv = require("csv-parser");
 const bcrypt = require("bcryptjs");
@@ -616,19 +617,37 @@ exports.getQuizAttempts = async (req, res) => {
       });
     }
 
-    // Students assigned to this quiz = same teacher and same class
-    const assignedStudents = await User.find({
-      role: 'student',
-      teacherId: teacherId,
-      class: quiz.class
-    }).select('_id name class').lean();
+    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    const studentIds = assignedStudents.map(s => s._id);
+    // Include all assigned students (teacher's students, scoped to quiz class if present)
+    const baseAssignedQuery = { teacherId, role: "student" };
+    const className = (quiz.class || "").trim();
 
-    const attempts = await Mark.find({
-      quizId: quizId,
-      student_id: { $in: studentIds }
-    }).lean();
+    let assignedStudentsQuery = { ...baseAssignedQuery };
+    if (className) {
+      // tolerate casing / extra spaces (common data issue)
+      assignedStudentsQuery.class = new RegExp(`^\\s*${escapeRegex(className)}\\s*$`, "i");
+    }
+
+    let assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
+
+    // Fallback: if class filter yields none, show all teacher students (prevents 0/0/0 UI)
+    if (assignedStudents.length === 0 && className) {
+      assignedStudentsQuery = { ...baseAssignedQuery };
+      assignedStudents = await User.find(assignedStudentsQuery).select("name class").lean();
+    }
+
+    const assignedStudentIds = assignedStudents.map((s) => s._id);
+
+    // Latest submission per student counts as "Attempted"
+    const marks = await Mark.find({
+      quizId,
+      teacherId,
+      student_id: { $in: assignedStudentIds }
+    })
+      .populate("student_id", "name")
+      .sort({ submissionTime: -1 })
+      .lean();
 
     const attemptedSet = new Set(attempts.map(a => a.student_id.toString()));
     const attemptByStudent = {};
@@ -668,19 +687,15 @@ exports.getQuizAttempts = async (req, res) => {
 
     res.json({
       success: true,
-      quiz: {
-        _id: quiz._id,
-        title: quiz.title,
-        subject: quiz.subject,
-        class: quiz.class,
-        totalMarks: quiz.totalMarks
-      },
-      totalStudents: assignedStudents.length,
-      attemptedCount: attempted.length,
-      notAttemptedCount: notAttempted.length,
-      attempted,
-      notAttempted
+      data: {
+        totalStudents,
+        attemptedCount,
+        notAttemptedCount,
+        attemptedStudents, // sorted by latest attempt due to query sort + first-seen grouping
+        notAttemptedStudents
+      }
     });
+
   } catch (err) {
     res.status(500).json({
       success: false,

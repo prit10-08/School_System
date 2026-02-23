@@ -5,6 +5,9 @@ class TeacherDashboard {
         this.teacher = null;
         this.currentStudents = [];
         this.quizExpiryInterval = null;
+        this.statusCheckInterval = null;
+        this.quizStartTime = null;
+        this.quizEndTime = null;
         this.init();
     }
 
@@ -210,6 +213,12 @@ class TeacherDashboard {
 
         // Form submissions
         this.setupFormHandlers();
+
+        // Cleanup monitoring on page unload
+        window.addEventListener('beforeunload', () => {
+            this.stopTeacherQuizMonitoring();
+            this.stopGlobalTeacherMonitoring();
+        });
     }
 
     setupModalControls() {
@@ -797,6 +806,9 @@ async confirmPublishFromPreview() {
                 this.displayQuizzes(response.data);
                 // Show all quizzes (drafts and published) in recent section
                 this.updateRecentQuizzes(response.data.slice(0, 3));
+                
+                // Start global real-time monitoring for all quizzes
+                this.startGlobalTeacherMonitoring(response.data);
             } else {
                 console.error('Failed to load quizzes:', response.message);
                 this.showMessage('Failed to load quizzes from database', 'error');
@@ -1321,16 +1333,18 @@ async confirmPublishFromPreview() {
         container.innerHTML = quizzes.map(quiz => {
             const isDraft = quiz.status === 'draft';
             const statusBadge = isDraft ?
-                '<span class="status-badge draft-badge">Draft</span>' :
-                '<span class="status-badge published-badge">Published</span>';
+                '<span class="btn-status draft">DRAFT</span>' :
+                '<span class="btn-status published">PUBLISHED</span>';
 
             return `
         <div class="quiz-item-small clickable-item" data-quiz-id="${quiz._id}">
-            <div class="quiz-item-header">
-                <h4><i class="fas fa-question-circle"></i> ${(quiz.title || 'Quiz').toUpperCase()}</h4>
-                ${statusBadge}
+            ${statusBadge}
+            <div class="quiz-item-content">
+                <div class="quiz-item-header">
+                    <h4><i class="fas fa-question-circle"></i> ${(quiz.title || 'Quiz').toUpperCase()}</h4>
+                </div>
+                <p>${(quiz.subject || 'General').toUpperCase()} • ${quiz.class || 'No class'} • ${quiz.questions ? quiz.questions.length : 0} questions</p>
             </div>
-            <p>${(quiz.subject || 'General').toUpperCase()} • ${quiz.class || 'No class'} • ${quiz.questions ? quiz.questions.length : 0} questions</p>
         </div>
     `;
         }).join('');
@@ -1340,6 +1354,97 @@ async confirmPublishFromPreview() {
             item.addEventListener('click', () => {
                 this.navigateToQuizPage(item.dataset.quizId);
             });
+        });
+
+        // Start monitoring for quiz start times to disable edit buttons
+        this.startTeacherQuizMonitoring(quizzes);
+    }
+
+    // Real-time monitoring for teacher quiz start times
+    startGlobalTeacherMonitoring(quizzes) {
+        // Stop any existing global monitoring
+        this.stopGlobalTeacherMonitoring();
+
+        // Store quiz data for monitoring
+        this.monitoredTeacherQuizzes = quizzes;
+
+        // Start continuous monitoring
+        this.globalTeacherInterval = setInterval(() => {
+            this.updateAllTeacherQuizStatuses();
+        }, 1000); // Check every second
+    }
+
+    stopGlobalTeacherMonitoring() {
+        if (this.globalTeacherInterval) {
+            clearInterval(this.globalTeacherInterval);
+            this.globalTeacherInterval = null;
+        }
+    }
+
+    updateAllTeacherQuizStatuses() {
+        if (!this.monitoredTeacherQuizzes) return;
+
+        const now = new Date();
+
+        this.monitoredTeacherQuizzes.forEach(quiz => {
+            if (quiz.status === 'published' && quiz.startTime) {
+                const startTime = new Date(quiz.startTime);
+                
+                // Check if quiz has started and edit button should be disabled
+                if (now >= startTime && !quiz.editDisabled) {
+                    quiz.editDisabled = true;
+                    this.disableQuizEditButton(quiz._id);
+                }
+            }
+        });
+    }
+
+    // Real-time monitoring for teacher quiz start times
+    startTeacherQuizMonitoring(quizzes) {
+        this.stopTeacherQuizMonitoring();
+
+        quizzes.forEach(quiz => {
+            if (quiz.status === 'published' && quiz.startTime) {
+                const startTime = new Date(quiz.startTime);
+                const now = new Date();
+                
+                if (startTime > now) {
+                    // Monitor this quiz for start time
+                    const checkInterval = setInterval(() => {
+                        const currentTime = new Date();
+                        if (currentTime >= startTime) {
+                            clearInterval(checkInterval);
+                            this.disableQuizEditButton(quiz._id);
+                        }
+                    }, 1000);
+                    
+                    // Store interval reference for cleanup
+                    if (!this.quizMonitoringIntervals) {
+                        this.quizMonitoringIntervals = [];
+                    }
+                    this.quizMonitoringIntervals.push(checkInterval);
+                }
+            }
+        });
+    }
+
+    stopTeacherQuizMonitoring() {
+        if (this.quizMonitoringIntervals) {
+            this.quizMonitoringIntervals.forEach(interval => clearInterval(interval));
+            this.quizMonitoringIntervals = [];
+        }
+    }
+
+    disableQuizEditButton(quizId) {
+        // Find and disable edit buttons for this quiz
+        const editButtons = document.querySelectorAll(`[data-quiz-id="${quizId}"] .btn-edit, [onclick*="editQuiz('${quizId}')"]`);
+        editButtons.forEach(button => {
+            button.disabled = true;
+            button.classList.add('disabled');
+            // Remove onclick handler to prevent clicks
+            button.onclick = null;
+            button.style.cursor = 'not-allowed';
+            button.style.opacity = '0.5';
         });
     }
 
@@ -5878,6 +5983,8 @@ async confirmPublishFromPreview() {
                 this.apiCall(`/quizzes/${quizId}`, 'GET')
             ]);
 
+            console.log('API Responses:', { attemptsResponse, quizResponse }); // Debug log
+
             if (!attemptsResponse?.success) {
                 this.showMessage(attemptsResponse?.message || 'Failed to load quiz attempts', 'error');
                 return;
@@ -5889,9 +5996,10 @@ async confirmPublishFromPreview() {
 
             this.quizDetailsData = {
                 quiz: quizResponse.data,
-                attempts: attemptsResponse.data
+                attempts: attemptsResponse.data || attemptsResponse // Handle both response formats
             };
 
+            console.log('Quiz attempts data loaded:', this.quizDetailsData); // Debug log
             this.renderQuizDetailsPage();
         } catch (error) {
             console.error('Error loading quiz attempts:', error);
