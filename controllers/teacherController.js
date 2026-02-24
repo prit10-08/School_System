@@ -649,9 +649,9 @@ exports.getQuizAttempts = async (req, res) => {
       .sort({ submissionTime: -1 })
       .lean();
 
-    const attemptedSet = new Set(attempts.map(a => a.student_id.toString()));
+    const attemptedSet = new Set(marks.map(a => a.student_id.toString()));
     const attemptByStudent = {};
-    attempts.forEach(a => {
+    marks.forEach(a => {
       attemptByStudent[a.student_id.toString()] = {
         score: a.marks,
         totalMarks: a.totalMarks,
@@ -688,11 +688,11 @@ exports.getQuizAttempts = async (req, res) => {
     res.json({
       success: true,
       data: {
-        totalStudents,
-        attemptedCount,
-        notAttemptedCount,
-        attemptedStudents, // sorted by latest attempt due to query sort + first-seen grouping
-        notAttemptedStudents
+        totalStudents: assignedStudents.length,
+        attemptedCount: attempted.length,
+        notAttemptedCount: notAttempted.length,
+        attemptedStudents: attempted,
+        notAttemptedStudents: notAttempted
       }
     });
 
